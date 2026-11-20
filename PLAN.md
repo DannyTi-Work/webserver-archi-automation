@@ -74,7 +74,7 @@ bash scripts/preflight.sh
 Testing comes before automation. The manual pass on a clean machine defines the acceptance criteria; the shell scripts are then the repeatable version of that pass.
 
 ```
-Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6
+Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7
 ```
 
 ---
@@ -178,6 +178,17 @@ The "check first" phase. Verify environment and a hand-installed baseline before
 
 ---
 
+## Phase 7 — Web admin panel (`scripts/panel/`)
+
+- [ ] `scripts/panel/index.php` — dashboard: stack state, per-domain list (docroot, cert status, logs), cert expiry per domain
+- [ ] `scripts/panel/actions.php` — action endpoints: add domain, TLS per domain, renew, smoke, remove domain; each calls the existing script through `sudo`, inheriting preflight + idempotency
+- [ ] `scripts/status.sh` — machine-readable state dump: stack state, domains with cert expiry (via `certbot certificates` or openssl), latest log lines; used by the panel
+- [ ] `config/panel.conf.example` — panel options (admin path, port, basic-auth); real `panel.conf` is gitignored
+- [ ] Security: passwordless sudo rule limited to the specific script paths; basic auth on the admin path + optional IP restriction; domain args validated by `add-domain.sh` itself; POST actions carry a CSRF token
+- [ ] README quick protocols — document the panel URL and how to log in; note the admin path
+
+---
+
 ## Quick protocols
 
 ```bash
@@ -201,6 +212,46 @@ bash scripts/tls.sh --renew-dry-run
 # 5. Remove a domain
 bash scripts/remove-domain.sh example.com
 ```
+
+---
+
+## One-command installer — `scripts/install.sh`
+
+Single entry point that runs the whole flow in one command, replacing the quick-protocol sequence.
+
+### Command
+
+```bash
+bash scripts/install.sh [domain...] [--smoke]
+```
+
+- Zero or more `domain` arguments. With none, it falls back to `config/domains.conf` — the same optional batch list `add-domain.sh` reads.
+- `--smoke` runs `tests/smoke.sh` at the end.
+- `LE_STAGING=1 bash scripts/install.sh ...` forwards the staging toggle to `tls.sh` per domain, same as `LE_STAGING=1 bash scripts/tls.sh ...`.
+
+### Behavior
+
+1. `preflight_check base` — nothing mutates the system until preflight passes.
+2. `scripts/setup.sh` — base + LEMP (Phase 2).
+3. `scripts/add-domain.sh <domain>` per domain (Phase 3).
+4. `scripts/tls.sh <domain>` per domain (Phase 4).
+5. `tests/smoke.sh` when `--smoke` is passed (Phase 5).
+
+### Rules
+
+- Exit non-zero and stop on the first failing step. The underlying scripts are already guarded (preflight + idempotency), so rerunning the installer is safe and skips everything that already exists.
+- No new dependencies: the installer only sequences existing scripts and shares helpers via `lib/common.sh`.
+- Update the Quick protocols section to show the one-command flow as the default path.
+
+### Acceptance
+
+- On a fresh VPS, `bash scripts/install.sh example.com` reaches the same end state the Phase 0 manual baseline defines (nginx serving the domain marker, PHP executing, DB reachable from PHP, renewal timer active).
+- Rerunning `bash scripts/install.sh example.com` is a no-op apart from config tests — idempotency inherited from `setup.sh`, `add-domain.sh` and `tls.sh`.
+
+### Tasks
+
+- [ ] `scripts/install.sh` — one-command installer (behavior and rules above)
+- [ ] README quick protocols — show `bash scripts/install.sh example.com` as the one-command path
 
 ---
 
@@ -228,12 +279,18 @@ webserver-archi-automation/
 │   └── preflight.sh            # OS/package manager/panel/network checks
 ├── config/
 │   ├── domains.conf            # optional one-domain-per-line list
-│   └── .env.example            # DB credentials template
+│   ├── .env.example            # DB credentials template
+│   └── panel.conf.example      # admin panel options (path, port, auth)
 ├── scripts/
 │   ├── preflight.sh            # "check requirements first" command
 │   ├── setup.sh                # base + LEMP
 │   ├── add-domain.sh           # vhost + DB + marker
 │   ├── tls.sh                  # certbot per domain + renewal
+│   ├── install.sh              # one-command installer (setup + add-domain + tls)
+│   ├── status.sh               # machine-readable state dump (panel, smoke)
+│   ├── panel/
+│   │   ├── index.php           # dashboard
+│   │   └── actions.php         # action endpoints
 │   └── remove-domain.sh
 ├── templates/
 │   └── nginx-vhost.conf.tpl
