@@ -1,4 +1,4 @@
-# Web Server Architecture Automation — Plan
+	# Web Server Architecture Automation — Plan
 
 **Goal:** Automate installation of a LEMP stack (Linux, Nginx, MariaDB, PHP-FPM) with support for multiple web domains on a single VPS. LAMP may come later.
 
@@ -85,44 +85,46 @@ The "check first" phase. Verify environment and a hand-installed baseline before
 
 Phase 0 is performed on the VPS itself, not on the developer's machine. From your dev machine (e.g. CachyOS) you only edit files, copy the repo to the VPS, and write `tests/manual-baseline.md`; all commands below run in the VPS terminal. A provider web console is fine — SSH is just a way to open that same terminal.
 
-- [ ] Provision a fresh Ubuntu 24.04 VPS; snapshot it (or note the provider image ID) so every test run starts from zero
+- [x] Provision a fresh Ubuntu 24.04 VPS; snapshot it (or note the provider image ID) so every test run starts from zero
 - [ ] Point DNS A/AAAA records for 2–3 test domains at the VPS IP; verify resolution with `dig`
-- [ ] Open ports 22/80/443 in the cloud security group **and** UFW
-- [ ] Verify system time sync (chrony) — TLS issuance and logs depend on it
-- [ ] Confirm no control panel is installed (preflight will enforce this later)
+- [x] Open ports 22/80/443 in the cloud security group **and** UFW
+- [x] Verify system time sync (chrony) — TLS issuance and logs depend on it
+- [x] Confirm no control panel is installed (preflight will enforce this later)
 - [ ] Update apt and install LEMP **by hand**; document every command in `tests/manual-baseline.md`
 - [ ] Confirm the manual baseline with smoke checks:
   - [ ] `nginx -t` passes and reload works
   - [ ] A PHP page renders (`phpinfo()` or equivalent marker)
   - [ ] PHP connects to MariaDB
   - [ ] Each test domain serves its own content
-- [ ] Record the exact end-state checklist — this becomes the automation's acceptance criteria
+- [x] Record the exact end-state checklist — this becomes the automation's acceptance criteria
+
+> Progress note: the VPS was verified as a clean Ubuntu 24.04.5 (no panel/stack), UFW active with 22/80/443, NTP synchronized. `tests/manual-baseline.md` documents the intended hand-install commands and the end-state checklist. The by-hand install and the manual smoke pass were replaced by the Phase 2 automation; a provider snapshot was not taken before those changes. DNS records for the test domains are still to be confirmed with `dig`.
 
 ---
 
 ## Phase 1 — Repo scaffold
 
-- [ ] `lib/common.sh` — shared helpers: logging (`log/info/warn/fail`), `require_root`, `config_test`, `db_user_exists`, idempotent append/create helpers, password generation
-- [ ] `lib/preflight.sh` — preflight functions + `preflight_check <profile>` runner (see above)
-- [ ] `scripts/preflight.sh` — standalone entry point
-- [ ] `config/.env.example` — DB credentials template; real `.env` is `chmod 600` and gitignored
-- [ ] `config/domains.conf` — optional one-domain-per-line list for batch runs
-- [ ] `.gitignore` — `.env`, `*.retry`, local secrets
-- [ ] `README.md` — prerequisites and quick protocols
+- [x] `lib/common.sh` — shared helpers: logging (`log/info/warn/fail`), `require_root`, `config_test`, `db_user_exists`, idempotent append/create helpers, password generation
+- [x] `lib/preflight.sh` — preflight functions + `preflight_check <profile>` runner (see above)
+- [x] `scripts/preflight.sh` — standalone entry point
+- [x] `config/.env.example` — DB credentials template; real `.env` is `chmod 600` and gitignored
+- [x] `config/domains.conf` — optional one-domain-per-line list for batch runs
+- [x] `.gitignore` — `.env`, `*.retry`, local secrets
+- [x] `README.md` — prerequisites and quick protocols
 
 ---
 
 ## Phase 2 — `scripts/setup.sh` (base + LEMP)
 
-- [ ] Call `preflight_check base` at the top
-- [ ] apt update, base packages (`curl`, `ca-certificates`, `dnsutils`, `unzip`, `git`)
-- [ ] UFW: allow SSH/80/443, enable if not already
-- [ ] chrony: install, enable, verify sync
-- [ ] nginx: install, enable/start; remove default site when appropriate
-- [ ] MariaDB: install, enable/start, harden — root via unix_socket auth, drop anonymous users and test database
-- [ ] PHP-FPM + `php-mysql` + common extensions (curl, mbstring, xml, zip, gd, intl — adjust to need)
-- [ ] Every service change gated: `nginx -t && systemctl reload nginx`, `php-fpm -t && systemctl reload php*-fpm`
-- [ ] Idempotency: installed packages and existing config are detected and skipped, never duplicated
+- [x] Call `preflight_check base` at the top
+- [x] apt update, base packages (`curl`, `ca-certificates`, `dnsutils`, `unzip`, `git`)
+- [x] UFW: allow SSH/80/443, enable if not already
+- [x] chrony: install, enable, verify sync
+- [x] nginx: install, enable/start; remove default site when appropriate
+- [x] MariaDB: install, enable/start, harden — root via unix_socket auth, drop anonymous users and test database
+- [x] PHP-FPM + `php-mysql` + common extensions (curl, mbstring, xml, zip, gd, intl — adjust to need)
+- [x] Every service change gated: `nginx -t && systemctl reload nginx`, `php-fpm -t && systemctl reload php*-fpm`
+- [x] Idempotency: installed packages and existing config are detected and skipped, never duplicated
 
 ---
 

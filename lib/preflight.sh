@@ -160,24 +160,39 @@ pf_panel_conflicts() {
     pf_ok "no control panel detected"
   fi
 
+  # apache2/mysql-server conflict with our LEMP stack; nginx/mariadb/php-fpm
+  # are what setup.sh installs, so on a re-run they are expected (warn, not fail).
   local pattern
-  local installed=""
-  for pattern in nginx apache2 mariadb-server mysql-server 'php*-fpm'; do
+  local conflicting=""
+  local expected=""
+  for pattern in apache2 mysql-server; do
     # shellcheck disable=SC2086
     if dpkg -l $pattern 2>/dev/null | grep -q '^ii'; then
-      installed="${installed} ${pattern}"
+      conflicting="${conflicting} ${pattern}"
     fi
   done
-  if [[ -n "$installed" ]]; then
-    pf_fail "pre-existing stack packages:${installed} — start from a clean VPS"
+  for pattern in nginx mariadb-server 'php*-fpm'; do
+    # shellcheck disable=SC2086
+    if dpkg -l $pattern 2>/dev/null | grep -q '^ii'; then
+      expected="${expected} ${pattern}"
+    fi
+  done
+  if [[ -n "$conflicting" ]]; then
+    pf_fail "conflicting stack packages:${conflicting} — start from a clean VPS"
+  elif [[ -n "$expected" ]]; then
+    pf_warn "LEMP packages already present:${expected} — setup.sh will skip/reuse them"
   else
     pf_ok "no pre-existing LEMP/LAMP stack packages"
   fi
 
-  local listeners
+  local listeners nginx_listeners other_listeners
   listeners="$(ss -ltnp 2>/dev/null | awk 'NR>1 && ($4 ~ /:80$/ || $4 ~ /:443$/) {print $4 " (" $NF ")"}')"
-  if [[ -n "$listeners" ]]; then
-    pf_fail "ports 80/443 already in use: ${listeners}"
+  nginx_listeners="$(printf '%s\n' "$listeners" | grep -i nginx || true)"
+  other_listeners="$(printf '%s\n' "$listeners" | grep -iv nginx || true)"
+  if [[ -n "$other_listeners" ]]; then
+    pf_fail "ports 80/443 in use by a non-nginx process: ${other_listeners}"
+  elif [[ -n "$nginx_listeners" ]]; then
+    pf_warn "ports 80/443 already used by nginx: ${nginx_listeners} — expected on a re-run"
   else
     pf_ok "ports 80/443 free"
   fi
