@@ -4,7 +4,7 @@
 
 **Implementation decisions (revised):**
 - Tool: **Bash shell scripts** with a small shared library — no Ansible, no Python dependency
-- Scope: **single VPS**, scripts executed locally on the server (client SSHes in and runs them)
+- Scope: **single VPS**; scripts are executed **on the VPS itself** (in the VPS terminal, via provider console or an SSH terminal session). The repo is copied onto the VPS and the scripts run there; no client-side / remote SSH installer.
 - First iteration: **LEMP only** (LAMP later, reusing the same vhost model)
 - TLS: **Let's Encrypt certbot** with real domains (staging endpoint first)
 - Test target: **fresh VPS per test run** (reset from snapshot between runs)
@@ -82,6 +82,8 @@ Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 
 ## Phase 0 — Test harness & manual baseline
 
 The "check first" phase. Verify environment and a hand-installed baseline before writing any automation.
+
+Phase 0 is performed on the VPS itself, not on the developer's machine. From your dev machine (e.g. CachyOS) you only edit files, copy the repo to the VPS, and write `tests/manual-baseline.md`; all commands below run in the VPS terminal. A provider web console is fine — SSH is just a way to open that same terminal.
 
 - [ ] Provision a fresh Ubuntu 24.04 VPS; snapshot it (or note the provider image ID) so every test run starts from zero
 - [ ] Point DNS A/AAAA records for 2–3 test domains at the VPS IP; verify resolution with `dig`
@@ -191,6 +193,8 @@ The "check first" phase. Verify environment and a hand-installed baseline before
 
 ## Quick protocols
 
+Every command below is executed **on the VPS**. Copy the repo onto the VPS first, then run them in its terminal; do not run this toolchain from a laptop/desktop.
+
 ```bash
 # 0. Check requirements first (OS, package manager, control panel, conflicts)
 bash scripts/preflight.sh
@@ -229,6 +233,8 @@ bash scripts/install.sh [domain...] [--smoke]
 - `--smoke` runs `tests/smoke.sh` at the end.
 - `LE_STAGING=1 bash scripts/install.sh ...` forwards the staging toggle to `tls.sh` per domain, same as `LE_STAGING=1 bash scripts/tls.sh ...`.
 
+The installer is executed on the VPS: `bash scripts/install.sh example.com` runs from the VPS terminal. There is no SSH orchestration from the client.
+
 ### Behavior
 
 1. `preflight_check base` — nothing mutates the system until preflight passes.
@@ -263,7 +269,7 @@ bash scripts/install.sh [domain...] [--smoke]
 - **Forgotten DNS** — the most common "script failure" is DNS not pointing at the VPS; preflight checks `dig` before every TLS step.
 - **Snapshot/reset procedure** — depends on the VPS provider; document the exact steps once known.
 - **PHP-FPM isolation** — phase 1 uses a shared pool; per-domain pools + unix users are a follow-up if stronger isolation is needed.
-- **Client-side execution** — assumed scripts run on the VPS itself. If a client-side SSH wrapper is added later, preflight needs an extra local section (SSH reachability, repo path, `scp` availability).
+- **Execution context** — all scripts, including the installer, run on the VPS itself. No client-side SSH wrapper or remote-install path is planned. Running the scripts on the dev machine (e.g. CachyOS) will correctly fail preflight at the OS / package-manager checks.
 
 ---
 
