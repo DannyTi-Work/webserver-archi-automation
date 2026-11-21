@@ -1,2 +1,5 @@
 .opencode
 .env
+config/.env
+*.retry
+*.log

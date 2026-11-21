@@ -132,3 +132,39 @@ Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains.
               (no mutation) nginx -t /     vhosts/DB/users
                            php-fpm -t
 ```
+
+## Prerequisites
+
+- A fresh **Ubuntu 24.04 LTS** VPS (VM/bare metal, not a container), root or passwordless sudo
+- DNS A/AAAA records for each domain pointing at the VPS IP
+- Ports 22/80/443 open in the cloud security group
+- Scripts are executed **on the VPS itself** — see `PLAN.md` (no remote SSH installer)
+- Copy the repo to the VPS (`git clone`), then run the commands in its terminal
+
+## Quick protocols
+
+All commands below run on the VPS, from the repo directory:
+
+```bash
+# 0. Check requirements first (OS, package manager, control panel, conflicts)
+bash scripts/preflight.sh
+
+# 1. Fresh VPS: install base + LEMP
+bash scripts/setup.sh
+
+# 2. Add and secure a domain
+bash scripts/add-domain.sh example.com
+LE_STAGING=1 bash scripts/tls.sh example.com   # first pass: staging
+bash scripts/tls.sh example.com                # then production
+
+# 3. Verify everything
+bash tests/smoke.sh
+
+# 4. Renewal check
+bash scripts/tls.sh --renew-dry-run
+
+# 5. Remove a domain
+bash scripts/remove-domain.sh example.com
+```
+
+Secrets: copy `config/.env.example` to `.env` (or `config/.env`), set mode `600`, and never commit it.
