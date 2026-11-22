@@ -74,7 +74,7 @@ bash scripts/preflight.sh
 Testing comes before automation. The manual pass on a clean machine defines the acceptance criteria; the shell scripts are then the repeatable version of that pass.
 
 ```
-Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7
+Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7 → Phase 8
 ```
 
 ---
@@ -184,14 +184,28 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 
 ---
 
-## Phase 7 — Web admin panel (`scripts/panel/`)
+## Phase 7 — WordPress app provisioning (shared template)
 
-- [ ] `scripts/panel/index.php` — dashboard: stack state, per-domain list (docroot, cert status, logs), cert expiry per domain
-- [ ] `scripts/panel/actions.php` — action endpoints: add domain, TLS per domain, renew, smoke, remove domain; each calls the existing script through `sudo`, inheriting preflight + idempotency
-- [ ] `scripts/status.sh` — machine-readable state dump: stack state, domains with cert expiry (via `certbot certificates` or openssl), latest log lines; used by the panel
-- [ ] `config/panel.conf.example` — panel options (admin path, port, basic-auth); real `panel.conf` is gitignored
-- [ ] Security: passwordless sudo rule limited to the specific script paths; basic auth on the admin path + optional IP restriction; domain args validated by `add-domain.sh` itself; POST actions carry a CSRF token
-- [ ] README quick protocols — document the panel URL and how to log in; note the admin path
+- [ ] `scripts/prepare-wordpress.sh` — download WordPress once into `/var/lib/wsa/wordpress/` (root-owned, dirs 0755 / files 0644), record version + sha256, `--update` refreshes; no-op if already present
+- [ ] `templates/wp-config.php.tpl` — placeholders for DB name/user/password/table-prefix + salts
+- [ ] `scripts/add-domain.sh` accepts `--app wordpress|static` (default `static`, preserving Phase 3 behaviour)
+- [ ] With `--app wordpress`: copy shared template into docroot, render `wp-config.php` from the domain's DB/user/password, generate per-domain salts + unique table prefix, `chown www-data`
+- [ ] vhost + DB/user + `nginx -t` gate continue exactly as in Phase 3
+- [ ] `config/domains.conf` accepts optional `domain|app` second field (plain `domain` still valid)
+- [ ] `scripts/install.sh` passes `--app` through to `add-domain.sh`; batch mode reads the app field
+- [ ] `tests/smoke.sh` becomes app-aware: detect `wp-config.php`; for WordPress check `wp-login.php` 200 + WordPress signature, DB via `wp db check` if wp-cli exists (else WARN); static sites keep marker checks
+- [ ] Idempotency: skip if WordPress already present; never overwrite existing site content
+
+---
+
+## Phase 8 — Web admin panel (`scripts/panel/`)
+
+- [ ] `scripts/panel/index.php` — dashboard: stack state, per-domain list (docroot, cert status, logs), cert expiry per domain; shows app type (static / WordPress) and WP version where available
+- [ ] `scripts/panel/actions.php` — action endpoints: add domain, TLS per domain, renew, smoke, remove domain, **Deploy WordPress** (calls `prepare-wordpress.sh` once then `add-domain.sh --app wordpress <domain>`); each calls the existing script through `sudo`, inheriting preflight + idempotency; allow choosing app type (static / wordpress) when adding a domain
+- [ ] `scripts/status.sh` — machine-readable state dump: stack state, domains with app type + WP version, cert expiry (via `certbot certificates` or openssl), latest log lines; used by the panel
+- [ ] `config/panel.conf.example` — panel options (admin path, port, basic-auth, optional WordPress template path default `/var/lib/wsa/wordpress`); real `panel.conf` is gitignored
+- [ ] Security: passwordless sudo rule limited to the specific script paths; basic auth on the admin path + optional IP restriction; domain args validated by `add-domain.sh` itself; POST actions carry a CSRF token; privileged panel actions run only through the existing sudo-limited scripts
+- [ ] README quick protocols — document the panel URL and how to log in; note the admin path and the Deploy WordPress action
 
 ---
 
@@ -230,11 +244,12 @@ Single entry point that runs the whole flow in one command, replacing the quick-
 ### Command
 
 ```bash
-bash scripts/install.sh [domain...] [--smoke]
+bash scripts/install.sh [domain...] [--smoke] [--app wordpress|static]
 ```
 
-- Zero or more `domain` arguments. With none, it falls back to `config/domains.conf` — the same optional batch list `add-domain.sh` reads.
+- Zero or more `domain` arguments. With none, it falls back to `config/domains.conf` — the same optional batch list `add-domain.sh` reads (`domain` or `domain|app`).
 - `--smoke` runs `tests/smoke.sh` at the end.
+- `--app wordpress|static` is passed through to `add-domain.sh` (default `static`); see Phase 7.
 - `LE_STAGING=1 bash scripts/install.sh ...` forwards the staging toggle to `tls.sh` per domain, same as `LE_STAGING=1 bash scripts/tls.sh ...`.
 
 The installer is executed on the VPS: `bash scripts/install.sh example.com` runs from the VPS terminal. There is no SSH orchestration from the client.
@@ -273,6 +288,7 @@ The installer is executed on the VPS: `bash scripts/install.sh example.com` runs
 - **Forgotten DNS** — the most common "script failure" is DNS not pointing at the VPS; preflight checks `dig` before every TLS step.
 - **Snapshot/reset procedure** — depends on the VPS provider; document the exact steps once known.
 - **PHP-FPM isolation** — phase 1 uses a shared pool; per-domain pools + unix users are a follow-up if stronger isolation is needed.
+- **Shared WordPress template** — updating the shared template affects only **new** domains; existing sites update via wp-admin / wp-cli.
 - **Execution context** — all scripts, including the installer, run on the VPS itself. No client-side SSH wrapper or remote-install path is planned. Running the scripts on the dev machine (e.g. CachyOS) will correctly fail preflight at the OS / package-manager checks.
 
 ---
@@ -288,22 +304,24 @@ webserver-archi-automation/
 │   ├── common.sh               # shared idempotent helpers
 │   └── preflight.sh            # OS/package manager/panel/network checks
 ├── config/
-│   ├── domains.conf            # optional one-domain-per-line list
+│   ├── domains.conf            # optional domain list (domain or domain|app)
 │   ├── .env.example            # DB credentials template
-│   └── panel.conf.example      # admin panel options (path, port, auth)
+│   └── panel.conf.example      # admin panel options (path, port, auth, WP template)
 ├── scripts/
 │   ├── preflight.sh            # "check requirements first" command
 │   ├── setup.sh                # base + LEMP
-│   ├── add-domain.sh           # vhost + DB + marker
+│   ├── add-domain.sh           # vhost + DB + marker (--app wordpress|static)
 │   ├── tls.sh                  # certbot per domain + renewal
-│   ├── install.sh              # one-command installer (setup + add-domain + tls)
+│   ├── install.sh              # one-command installer (setup + add-domain + tls, --app passthrough)
+│   ├── prepare-wordpress.sh    # one-time shared WordPress template download
 │   ├── status.sh               # machine-readable state dump (panel, smoke)
 │   ├── panel/
 │   │   ├── index.php           # dashboard
 │   │   └── actions.php         # action endpoints
 │   └── remove-domain.sh
 ├── templates/
-│   └── nginx-vhost.conf.tpl
+│   ├── nginx-vhost.conf.tpl
+│   └── wp-config.php.tpl       # WordPress config template
 └── tests/
     ├── manual-baseline.md      # documented hand-install steps
     └── smoke.sh                # per-domain smoke checks

@@ -156,6 +156,11 @@ bash scripts/install.sh --smoke
 
 # Staging cert first, then production (per domain)
 LE_STAGING=1 bash scripts/install.sh example.com --smoke
+
+# Provision a WordPress site instead of the static marker page
+bash scripts/prepare-wordpress.sh                       # once: download shared template
+bash scripts/add-domain.sh example.com --app wordpress  # copy template + wp-config.php
+bash scripts/install.sh example.com --app wordpress --smoke
 ```
 
 ### Step by step (same flow, manually)
@@ -207,6 +212,22 @@ Re-running it on an already-removed domain is a no-op.
 - Only flip to production once staging is green. The script reissues automatically if it detects a staging cert.
 - `www.<domain>` is included only if it resolves to the VPS.
 - Renewal is handled by `certbot.timer`; verify with `bash scripts/tls.sh --renew-dry-run`.
+
+### WordPress sites
+
+WordPress is provisioned from a shared, read-only template, not downloaded per site:
+
+```bash
+# Download once into /var/lib/wsa/wordpress (no-op if already present; --update refreshes)
+bash scripts/prepare-wordpress.sh
+
+# Add a domain with WordPress instead of the static marker page
+bash scripts/add-domain.sh example.com --app wordpress
+```
+
+`add-domain.sh` copies the template into the docroot and generates `wp-config.php` from that domain's database credentials, with per-domain salts and table prefix. Existing site content is never overwritten on re-run. In `config/domains.conf` batch mode, use `example.com|wordpress` per line (plain `example.com` stays static). Updating the shared template affects only **new** domains — existing sites update via wp-admin / wp-cli.
+
+The web admin panel (Phase 8) exposes this as a **Deploy WordPress** action.
 
 ### Path to LAMP
 
