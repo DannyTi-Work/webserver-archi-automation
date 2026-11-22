@@ -8,6 +8,10 @@
 
 Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains. Each domain gets its own docroot, logs and MariaDB database/user, with Let's Encrypt TLS. Everything runs through guarded bash scripts: `preflight.sh` checks requirements before anything changes, `setup.sh` installs the base stack, `add-domain.sh` / `tls.sh` / `remove-domain.sh` manage domains, `tests/smoke.sh` verifies the result, and `install.sh` runs the whole flow in one command. The full plan is in `PLAN.md`.
 
+- **Full usage guide:** [`docs/USAGE.md`](docs/USAGE.md)
+- **Guided end-to-end test:** `bash tests/manual-test.sh [domain] [--app wordpress|static]`
+
+
 ## Client overview
 
 ### What the client provides / what they get
