@@ -130,30 +130,30 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 
 ## Phase 3 — `scripts/add-domain.sh <domain>` (core feature)
 
-- [ ] Call `preflight_check domain` at the top (DNS must resolve to this VPS)
-- [ ] Docroot `/var/www/<domain>/public_html` with correct ownership/mode
-- [ ] Marker file in docroot (e.g. `<h1><domain></h1>` or `marker.txt`) so smoke tests can prove which site answered
-- [ ] Per-domain access/error logs
-- [ ] nginx vhost from `templates/nginx-vhost.conf.tpl`: `server_name`, `root`, logs, PHP-FPM fastcgi pass
-- [ ] Enable site (`sites-available` → `sites-enabled`)
-- [ ] Dedicated MariaDB database + least-privilege user (`GRANT ALL ON <db>.* TO '<user>'@'localhost'`) with credentials from `.env` or generated and stored there
-- [ ] `nginx -t` gate → conditional reload; never a blind restart
-- [ ] Idempotency: skip site/DB/user creation when they already exist
-- [ ] Accept domain as CLI argument; optional batch mode reading `config/domains.conf`
+- [x] Call `preflight_check domain` at the top (DNS must resolve to this VPS)
+- [x] Docroot `/var/www/<domain>/public_html` with correct ownership/mode
+- [x] Marker file in docroot (e.g. `<h1><domain></h1>` or `marker.txt`) so smoke tests can prove which site answered
+- [x] Per-domain access/error logs
+- [x] nginx vhost from `templates/nginx-vhost.conf.tpl`: `server_name`, `root`, logs, PHP-FPM fastcgi pass
+- [x] Enable site (`sites-available` → `sites-enabled`; on nginx.org layout the vhost goes in `conf.d/` directly)
+- [x] Dedicated MariaDB database + least-privilege user (`GRANT ALL ON <db>.* TO '<user>'@'localhost'`) with credentials from `.env` or generated and stored there
+- [x] `nginx -t` gate → conditional reload; never a blind restart
+- [x] Idempotency: skip site/DB/user creation when they already exist
+- [x] Accept domain as CLI argument; optional batch mode reading `config/domains.conf`
 
 ---
 
 ## Phase 4 — `scripts/tls.sh <domain>` (certbot)
 
-- [ ] Call `preflight_check tls` at the top (DNS + LE reachability + NTP)
-- [ ] Install certbot + nginx plugin if absent
-- [ ] Issue one cert per domain: `certbot --nginx -d <domain> [-d www.<domain>]`
-- [ ] First passes against the Let's Encrypt **staging endpoint** to avoid production rate limits; toggle with `LE_STAGING=1`
-- [ ] Flip to production once staging is green
-- [ ] Verify renewal: `certbot renew --dry-run`
-- [ ] Confirm the renewal timer (`systemctl list-timers | grep certbot`) is active
-- [ ] Confirm HTTPS vhosts serve 200 and HTTP redirects to HTTPS
-- [ ] Support `--renew-dry-run` as a quick protocol command
+- [x] Call `preflight_check tls` at the top (DNS + LE reachability + NTP)
+- [x] Install certbot + nginx plugin if absent
+- [x] Issue one cert per domain: `certbot --nginx -d <domain> [-d www.<domain>]` (www only when it resolves)
+- [x] First passes against the Let's Encrypt **staging endpoint** to avoid production rate limits; toggle with `LE_STAGING=1`
+- [x] Flip to production once staging is green
+- [x] Verify renewal: `certbot renew --dry-run`
+- [x] Confirm the renewal timer (`systemctl list-timers | grep certbot`) is active
+- [x] Confirm HTTPS vhosts serve 200 and HTTP redirects to HTTPS
+- [x] Support `--renew-dry-run` as a quick protocol command
 
 ---
 
