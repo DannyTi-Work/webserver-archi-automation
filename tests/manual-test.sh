@@ -152,7 +152,7 @@ if confirm "Provision $DOMAIN now?"; then
   fi
 
   check "docroot exists" test -d "$docroot"
-  check "vhost exists" bash -c "ls /etc/nginx/conf.d/${DOMAIN}.conf /etc/nginx/sites-available/${DOMAIN}.conf >/dev/null 2>&1"
+  check "vhost exists" bash -c "test -f /etc/nginx/conf.d/${DOMAIN}.conf || test -f /etc/nginx/sites-available/${DOMAIN}.conf"
   check "database exists" bash -c "mariadb -N -B -e \"SHOW DATABASES LIKE '${slug}_db'\" | grep -q ."
   check "db user exists" bash -c "mariadb -N -B -e \"SELECT user FROM mysql.user WHERE user='${slug}_u'\" | grep -q ."
   check "one .env password entry" bash -c "test \"\$(grep -c '^DB_PASS_${slug}=' '${REPO_ROOT}/.env')\" = 1"
@@ -253,7 +253,7 @@ elif confirm "Remove $DOMAIN now (docroot, logs, database, DB user)?"; then
   check "vhost removed" bash -c "test ! -f /etc/nginx/conf.d/${DOMAIN}.conf"
   check "database removed" bash -c "test -z \"\$(mariadb -N -B -e \"SHOW DATABASES LIKE '${slug}_db'\")\""
   check "db user removed" bash -c "test -z \"\$(mariadb -N -B -e \"SELECT user FROM mysql.user WHERE user='${slug}_u'\")\""
-  check ".env entry removed" bash -c "test \"\$(grep -c '^DB_PASS_${slug}=' '${REPO_ROOT}/.env' 2>/dev/null || echo 0)\" = 0"
+  check ".env entry removed" bash -c "! grep -q '^DB_PASS_${slug}=' '${REPO_ROOT}/.env' 2>/dev/null"
   check "nginx still valid" nginx -t
 
   if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
