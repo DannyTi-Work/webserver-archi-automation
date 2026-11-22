@@ -140,9 +140,21 @@ config_test "nginx (pre-certbot)" nginx -t
 
 # 4. Issue the certificate. certbot --nginx edits vhosts and reloads nginx.
 log "-- issuing certificate for $domain --"
-if [[ -f "$renew_conf" ]]; then
-  # Reuse a clean existing cert without reissuing.
-  info "existing certificate is valid — skipping issuance"
+# Detect whether the domain's vhost already has certbot's TLS directives.
+vhost_has_tls=0
+if [[ -f "$vhost_conf" ]] && grep -q 'ssl_certificate' "$vhost_conf"; then
+  vhost_has_tls=1
+fi
+
+if [[ -f "$renew_conf" ]] && (( vhost_has_tls )); then
+  # Cert and vhost are both in place — nothing to issue or deploy.
+  info "existing certificate is valid and deployed — skipping issuance"
+elif [[ -f "$renew_conf" ]]; then
+  # Valid cert exists but vhost lost its TLS directives (e.g. after
+  # remove-domain + add-domain). Force a renewal so certbot re-deploys it.
+  info "existing certificate is valid but not deployed — re-deploying"
+  run_root certbot --nginx --non-interactive --agree-tos --force-renewal \
+    --cert-name "$domain" "${email_arg[@]}" "${domain_args[@]}"
 else
   run_root certbot --nginx --non-interactive --agree-tos \
     --cert-name "$domain" \

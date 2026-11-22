@@ -133,6 +133,17 @@ set_env_var() {
   rm -f "$tmp"
 }
 
+# Remove any lines starting with KEY= from an env file.
+unset_env_var() {
+  local key="$1" file="${2:-${REPO_ROOT}/.env}"
+  [[ -f "$file" ]] || return 0
+  local tmp
+  tmp="$(mktemp)"
+  awk -v k="$key" 'index($0, k "=") != 1 { print }' "$file" > "$tmp"
+  cat "$tmp" > "$file"
+  rm -f "$tmp"
+}
+
 # Append $2 to $1 only if not already present (exact-line match). Always returns 0.
 append_line_once() {
   local file="$1"

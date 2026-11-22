@@ -176,11 +176,11 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 
 ## Phase 6 — Removal & docs
 
-- [ ] `scripts/remove-domain.sh <domain>`: disable vhost (`sites-enabled` → remove), remove docroot/logs, drop MariaDB DB/user, reload nginx behind config test; require explicit confirmation
-- [ ] README quick protocols (see below) and prerequisites: fresh VPS, sudo/SSH access, DNS A/AAAA records, ports 22/80/443
-- [ ] How to add a domain, how to remove a domain, rollback notes (snapshot before changes; `nginx -t` gating; restore from snapshot on failure)
-- [ ] Let's Encrypt rate-limit caveat and staging-endpoint usage
-- [ ] Note the path to LAMP: only the package list and vhost template are stack-coupled; the domain pattern (docroot/logs/DB/user) is shared
+- [x] `scripts/remove-domain.sh <domain>`: disable vhost (`sites-enabled` → remove), remove docroot/logs, drop MariaDB DB/user, reload nginx behind config test; require explicit confirmation
+- [x] README quick protocols (see below) and prerequisites: fresh VPS, sudo/SSH access, DNS A/AAAA records, ports 22/80/443
+- [x] How to add a domain, how to remove a domain, rollback notes (snapshot before changes; `nginx -t` gating; restore from snapshot on failure)
+- [x] Let's Encrypt rate-limit caveat and staging-endpoint usage
+- [x] Note the path to LAMP: only the package list and vhost template are stack-coupled; the domain pattern (docroot/logs/DB/user) is shared
 
 ---
 

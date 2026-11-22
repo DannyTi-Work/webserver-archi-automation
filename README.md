@@ -168,3 +168,31 @@ bash scripts/remove-domain.sh example.com
 ```
 
 Secrets: copy `config/.env.example` to `.env` (or `config/.env`), set mode `600`, and never commit it.
+
+### Removing a domain
+
+`remove-domain.sh` is destructive and asks for confirmation — it disables the vhost, removes the docroot and per-domain logs, drops the dedicated database and user, removes the credential from `.env`, and reloads nginx behind `nginx -t`. To skip the prompt (automation):
+
+```bash
+bash scripts/remove-domain.sh example.com --yes
+```
+
+Re-running it on an already-removed domain is a no-op.
+
+### Rollback notes
+
+- Take a provider snapshot before the first install; restore it from the provider console if the stack breaks.
+- Every service change is gated by `nginx -t` / `php-fpm8.x -t` — a failed config test leaves the previously running config live.
+- A failed `add-domain.sh` / `tls.sh` run leaves earlier domains untouched.
+- To recover one domain: re-create it with `add-domain.sh <domain>` (and `tls.sh <domain>` for HTTPS); all steps are idempotent.
+
+### Let's Encrypt caveats
+
+- Use `LE_STAGING=1 bash scripts/tls.sh <domain>` for the first pass. Staging certs are untrusted by browsers but do not count against production rate limits.
+- Only flip to production once staging is green. The script reissues automatically if it detects a staging cert.
+- `www.<domain>` is included only if it resolves to the VPS.
+- Renewal is handled by `certbot.timer`; verify with `bash scripts/tls.sh --renew-dry-run`.
+
+### Path to LAMP
+
+Only the package list and the vhost template are stack-coupled. The domain pattern — docroot, per-domain logs, dedicated database + least-privilege user — is shared. LAMP support can be added later by an Apache variant of `setup.sh` and a matching vhost template, without changing `add-domain.sh`'s domain/DB model.
