@@ -245,12 +245,22 @@ pf_domain_dns() {
     [[ -z "$public_ip" ]] && \
       public_ip="$(dig +short myip.opendns.com @resolver1.opendns.com 2>/dev/null | head -1 || true)"
   fi
+
+  # The local resolver may be overridden by /etc/hosts (e.g. 127.0.1.1 for the
+  # VPS hostname). Query a public resolver as well before declaring a mismatch.
+  local public_resolved=""
+  if command -v dig >/dev/null 2>&1; then
+    public_resolved="$(dig +short A "$domain" @8.8.8.8 2>/dev/null | head -1 || true)"
+    [[ -z "$public_resolved" ]] && \
+      public_resolved="$(dig +short AAAA "$domain" @8.8.8.8 2>/dev/null | head -1 || true)"
+  fi
+
   if [[ -z "$public_ip" ]]; then
     pf_warn "DNS for $domain resolves to $resolved; could not verify VPS public IP"
-  elif [[ "$resolved" == "$public_ip" ]]; then
+  elif [[ "$resolved" == "$public_ip" || "$public_resolved" == "$public_ip" ]]; then
     pf_ok "DNS for $domain points to this VPS ($public_ip)"
   else
-    pf_fail "DNS for $domain resolves to $resolved, but VPS public IP is $public_ip"
+    pf_fail "DNS for $domain resolves to $resolved (public: ${public_resolved:-none}), but VPS public IP is $public_ip"
   fi
 }
 

@@ -42,6 +42,16 @@ run_root() {
   "${SUDO[@]}" "$@"
 }
 
+# Reload a service only when it is active (paired with config_test gates).
+reload_service() {
+  local svc="$1"
+  if systemctl is-active --quiet "$svc"; then
+    run_root systemctl reload "$svc"
+  else
+    info "$svc not active — skipping reload"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Config test gate — never reload/restart a service without this passing.
 #   config_test "nginx" nginx -t
@@ -102,6 +112,25 @@ db_exists() {
 # ---------------------------------------------------------------------------
 ensure_dir() {
   mkdir -p -- "$1"
+}
+
+# Set KEY=VALUE in an env file, replacing an existing line for KEY (no duplicates).
+set_env_var() {
+  local key="$1" value="$2" file="${3:-${REPO_ROOT}/.env}"
+  ensure_dir "$(dirname -- "$file")"
+  touch -- "$file"
+  local tmp
+  tmp="$(mktemp)"
+  awk -v k="$key" -v v="$value" '
+    index($0, k "=") == 1 {
+      if (!done) { print k "=" v; done = 1 }
+      next
+    }
+    { print }
+    END { if (!done) print k "=" v }
+  ' "$file" > "$tmp"
+  cat "$tmp" > "$file"
+  rm -f "$tmp"
 }
 
 # Append $2 to $1 only if not already present (exact-line match). Always returns 0.

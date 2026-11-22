@@ -54,15 +54,6 @@ enable_service() {
   fi
 }
 
-reload_service() {
-  local svc="$1"
-  if service_active "$svc"; then
-    run_root systemctl reload "$svc"
-  else
-    info "$svc not active — skipping reload"
-  fi
-}
-
 log "== setup.sh: base + LEMP =="
 
 # ---------------------------------------------------------------------------
@@ -177,6 +168,26 @@ fi
 enable_service "$fpm_service"
 config_test "php-fpm ($fpm_bin)" "$fpm_bin" -t
 reload_service "$fpm_service"
+
+# nginx.org runs workers as 'nginx' while PHP-FPM socket is group-owned by
+# 'www-data' (mode 660). Add the nginx user to that group so PHP can execute.
+# Ubuntu's packaged nginx already runs as www-data, so this is a no-op there.
+fpm_socket="/run/php/php${php_ver}-fpm.sock"
+if [[ -S "$fpm_socket" ]]; then
+  nginx_user="$(awk '$1 == "user" && $2 != ";" { gsub(/;/, "", $2); print $2; exit }' \
+    /etc/nginx/nginx.conf 2>/dev/null || true)"
+  fpm_group="$(stat -c '%G' "$fpm_socket" 2>/dev/null || true)"
+  if [[ -n "$nginx_user" && -n "$fpm_group" ]] && id "$nginx_user" >/dev/null 2>&1; then
+    if ! id -nG "$nginx_user" 2>/dev/null | tr ' ' '\n' | grep -qx "$fpm_group"; then
+      run_root usermod -aG "$fpm_group" "$nginx_user"
+      config_test "nginx" nginx -t
+      run_root systemctl restart nginx
+      info "added nginx user '$nginx_user' to PHP-FPM socket group '$fpm_group'"
+    else
+      info "nginx user '$nginx_user' already in group '$fpm_group'"
+    fi
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
