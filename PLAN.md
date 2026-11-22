@@ -260,8 +260,8 @@ The installer is executed on the VPS: `bash scripts/install.sh example.com` runs
 
 ### Tasks
 
-- [ ] `scripts/install.sh` — one-command installer (behavior and rules above)
-- [ ] README quick protocols — show `bash scripts/install.sh example.com` as the one-command path
+- [x] `scripts/install.sh` — one-command installer (behavior and rules above)
+- [x] README quick protocols — show `bash scripts/install.sh example.com` as the one-command path
 
 ---
 

@@ -143,7 +143,22 @@ Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains.
 
 ## Quick protocols
 
-All commands below run on the VPS, from the repo directory:
+All commands below run on the VPS, from the repo directory.
+
+### One command (default)
+
+```bash
+# Base LEMP + one or more domains + TLS + optional smoke, all in one go
+bash scripts/install.sh example.com --smoke
+
+# From config/domains.conf instead of CLI args (no domain argument)
+bash scripts/install.sh --smoke
+
+# Staging cert first, then production (per domain)
+LE_STAGING=1 bash scripts/install.sh example.com --smoke
+```
+
+### Step by step (same flow, manually)
 
 ```bash
 # 0. Check requirements first (OS, package manager, control panel, conflicts)
@@ -158,7 +173,7 @@ LE_STAGING=1 bash scripts/tls.sh example.com   # first pass: staging
 bash scripts/tls.sh example.com                # then production
 
 # 3. Verify everything
-bash tests/smoke.sh
+bash tests/smoke.sh example.com
 
 # 4. Renewal check
 bash scripts/tls.sh --renew-dry-run
