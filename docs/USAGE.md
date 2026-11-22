@@ -131,6 +131,14 @@ credential, then reloads nginx behind `nginx -t`.
 > check. If the A record was already deleted, removal fails — restore DNS
 > temporarily or clean up by hand.
 
+> **Partial-removal hazard.** If you delete a domain's certificate with
+> `certbot delete` **before** running `remove-domain.sh`, the vhost still
+> references the now-missing cert and `nginx -t` fails — which blocks
+> `remove-domain.sh` itself. Recovery: strip the broken `listen 443 ssl` block
+> from the vhost (so `nginx -t` passes), then re-run `remove-domain.sh`. To avoid
+> this, always run `remove-domain.sh` **first**, and only delete the certificate
+> afterwards.
+
 ## Idempotency
 
 Every script is safe to re-run: installed packages, services, vhosts, databases,
