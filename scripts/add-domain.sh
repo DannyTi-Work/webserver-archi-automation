@@ -177,15 +177,19 @@ PHP
     link=""
   fi
 
-  if run_root test -f "$target" && run_root cmp -s "$vhost_tmp" "$target"; then
-    info "vhost already up to date: $target — skipping"
+  if run_root test -f "$target"; then
+    if run_root grep -q 'ssl_certificate' "$target"; then
+      # certbot owns the TLS directives now — never overwrite them.
+      info "vhost is TLS-enabled: $target — skipping (preserving certbot config)"
+    elif run_root cmp -s "$vhost_tmp" "$target"; then
+      info "vhost already up to date: $target — skipping"
+    else
+      run_root install -m 0644 "$vhost_tmp" "$target"
+      info "vhost updated: $target"
+    fi
   else
     run_root install -m 0644 "$vhost_tmp" "$target"
-    if run_root test -f "$target"; then
-      info "vhost updated: $target"
-    else
-      info "vhost created: $target"
-    fi
+    info "vhost created: $target"
   fi
   rm -f "$vhost_tmp"
 
