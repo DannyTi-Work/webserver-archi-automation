@@ -159,16 +159,18 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 
 ## Phase 5 — Verification
 
-- [ ] `tests/smoke.sh` — for each domain:
-  - [ ] HTTPS (443) returns 200
-  - [ ] Response contains that domain's marker content (proves vhost routing, not the default site)
-  - [ ] PHP executes (not served as plain text)
-  - [ ] DB connectivity from PHP (small probe script per domain)
+- [ ] `tests/smoke.sh` — for each domain: *(checks verified manually via curl; script still to be written)*
+  - [x] HTTPS (443) returns 200
+  - [x] Response contains that domain's marker content (proves vhost routing, not the default site)
+  - [x] PHP executes (not served as plain text)
+  - [x] DB connectivity from PHP (small probe script per domain)
   - [ ] Optional: security headers present
-- [ ] Idempotency: run `setup.sh` and `add-domain.sh` twice; second run must skip everything (no duplicate vhosts/users/DBs)
-- [ ] Preflight failure drill: simulate unsupported OS / panel present / port occupied → preflight must fail before any change
+- [x] Idempotency: run `setup.sh` and `add-domain.sh` twice; second run must skip everything (no duplicate vhosts/users/DBs) — verified across repeated runs
+- [x] Preflight failure drill: unsupported OS (CachyOS) and panel present (Hestia) both verified to fail before any change; non-nginx port-occupied path implemented but not simulated
 - [ ] Failure injection: deliberately break an nginx config → script must fail at `nginx -t` and leave the previous config live
 - [ ] Full reset-from-snapshot → run → smoke cycle, repeated, to prove the whole flow is reproducible
+
+> Note on reset-from-snapshot: this is a **manual, client-side procedure**. The client reinstalls/restores a clean Ubuntu 24.04 snapshot at their provider before each full-cycle run, then runs the full flow and smoke checks. This project has no provider API access, so the automated suite covers everything except the reset itself. The checkbox stays open until the repeated clean-slate cycle is performed and reported by the client. Removing it does not affect project functionality: one VPS with multiple domains, automated LEMP (later LAMP), certbot TLS, per-domain isolation and idempotency are all independent of this test.
 
 ---
 
