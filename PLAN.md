@@ -283,7 +283,7 @@ The installer is executed on the VPS: `bash scripts/install.sh example.com` runs
 ## Key risks / notes
 
 - **Let's Encrypt rate limits** — develop against the staging endpoint; production only for final verification.
-- **Secrets** — `.env` with mode 600, gitignored; never commit credentials.
+- **Secrets** — `.env` with mode 600, gitignored; never commit credentials. It lives at `<repo_dir>/.env` (root of whichever checkout the scripts run from) — not at a fixed path. Since it is untracked, copy it into a new checkout before replacing an old one.
 - **Control panels** — hard fail in preflight; they own web config and conflict with generated vhosts.
 - **Forgotten DNS** — the most common "script failure" is DNS not pointing at the VPS; preflight checks `dig` before every TLS step.
 - **Snapshot/reset procedure** — depends on the VPS provider; document the exact steps once known.

@@ -5,17 +5,24 @@ Every command runs **on the VPS** as root, from the repo directory.
 ## Mental model
 
 ```text
-/root/wsa/                  repo (scripts you run)
+<repo_dir>/                 repo checkout (scripts you run) — any directory you clone/copy it to
 /var/www/<domain>/          per-domain docroot
 /etc/nginx/conf.d/          per-domain vhost
 /var/log/nginx/<domain>.*   per-domain logs
 /var/lib/wsa/wordpress/     shared WordPress template (read-only)
-/root/wsa/.env              per-domain DB passwords (0600, gitignored)
+<repo_dir>/.env             per-domain DB passwords (0600, gitignored)
 /etc/letsencrypt/           certificates (NOT removed by remove-domain.sh)
 ```
 
 The stack (nginx, MariaDB, PHP-FPM, UFW, chrony, certbot) is installed **once**.
 Domains are added and removed on top of it.
+
+> **`.env` follows the repo.** Each script resolves its own directory and writes
+> secrets to `<repo_dir>/.env` — the root of whichever checkout you run it from.
+> A git clone at `/root/webserver-archi-automation` uses
+> `/root/webserver-archi-automation/.env`; a manually created copy such as
+> `/root/wsa` uses `/root/wsa/.env`. Both behave identically. `.env` is gitignored,
+> so it is **not** carried by `git pull` — back it up before replacing a checkout.
 
 ## Command reference
 
@@ -44,7 +51,7 @@ Domains are added and removed on top of it.
 ## First install, one command
 
 ```bash
-cd /root/wsa
+cd <repo_dir>            # e.g. /root/webserver-archi-automation (any clone location)
 bash scripts/install.sh example.com --smoke
 ```
 
@@ -147,12 +154,21 @@ rewritten is `wp-config.php`'s DB password when `.env` and MariaDB drift apart.
 
 ## Updating the tool on the VPS
 
-A manual copy (e.g. `/root/wsa`) does not track the repo. Either re-copy the files
-or keep a clone:
+A manually created directory does not track the repo. Keep a clone instead:
 
 ```bash
-git clone https://github.com/DannyTi-Work/webserver-archi-automation.git /root/wsa-git
-cd /root/wsa-git && git pull --ff-only
+git clone https://github.com/DannyTi-Work/webserver-archi-automation.git
+cd webserver-archi-automation
+git pull --ff-only
+```
+
+Every checkout location works — the scripts use their own path, so `<repo_dir>/.env`
+is always the active secret store. If you replace a checkout, copy `.env` into the
+new one first (it is gitignored, so `git clone` will not bring it):
+
+```bash
+cp /path/to/old-checkout/.env /path/to/new-checkout/.env
+chmod 600 /path/to/new-checkout/.env
 ```
 
 ## Troubleshooting

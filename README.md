@@ -191,7 +191,7 @@ bash scripts/tls.sh --renew-dry-run
 bash scripts/remove-domain.sh example.com
 ```
 
-Secrets: copy `config/.env.example` to `.env` (or `config/.env`), set mode `600`, and never commit it.
+Secrets live in `<repo_dir>/.env` — the root of whichever checkout you run the scripts from (e.g. `/root/webserver-archi-automation/.env` after a `git clone`). Copy `config/.env.example` to `.env` (or `config/.env`), set mode `600`, and never commit it. `.env` is gitignored, so `git pull` does not carry it — copy it into a new checkout before replacing an old one.
 
 ### Removing a domain
 
