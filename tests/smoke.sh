@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# tests/smoke.sh — verify a provisioned domain end-to-end (Phase 5).
+# tests/smoke.sh — verify a provisioned domain end-to-end (Phase 5/7).
 # Usage: bash tests/smoke.sh [domain ...]
-#        (no args) -> read domains from config/domains.conf
+#        (no args) -> read domains from config/domains.conf (domain or domain|app)
+# App-aware: static sites are checked by their marker page; WordPress sites by
+# wp-login.php + optional wp-cli DB check.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,7 +19,10 @@ if (( $# == 0 )); then
     while IFS= read -r line || [[ -n "$line" ]]; do
       line="${line%%#*}"
       line="$(printf '%s' "$line" | tr -d '[:space:]')"
-      [[ -n "$line" ]] && domains+=("$line")
+      if [[ -z "$line" ]]; then
+        continue
+      fi
+      domains+=("${line%%|*}")
     done < "${REPO_ROOT}/config/domains.conf"
   fi
 else
@@ -34,34 +39,62 @@ printf '== smoke test: %d domain(s) ==\n' "${#domains[@]}"
 for domain in "${domains[@]}"; do
   printf -- '-- %s --\n' "$domain"
   body="$(mktemp)"
+  docroot="/var/www/${domain}/public_html"
+  app="static"
+  [[ -f "${docroot}/wp-config.php" ]] && app="wordpress"
+  printf 'app: %s\n' "$app"
 
   # 1. HTTPS returns 200.
-  code="$(curl -sS -o "$body" -w '%{http_code}' --max-time 20 "https://${domain}/" 2>/dev/null || true)"
+  code="$(curl -LsS -o "$body" -w '%{http_code}' --max-time 20 "https://${domain}/" 2>/dev/null || true)"
   if [[ "$code" == "200" ]]; then
     ok "HTTPS 443: 200"
   else
     fail "HTTPS 443: expected 200, got '${code}'"
   fi
 
-  # 2. Marker content proves the correct vhost answered (not the default site).
-  if grep -q "<h1>${domain}</h1>" "$body"; then
-    ok "marker: response contains <h1>${domain}</h1>"
-  else
-    fail "marker: domain marker not found in response"
-  fi
+  if [[ "$app" == "wordpress" ]]; then
+    # 2. WordPress signature via wp-login.php (also proves PHP executes).
+    login_tmp="$(mktemp)"
+    login_code="$(curl -LsS -o "$login_tmp" -w '%{http_code}' --max-time 20 \
+      "https://${domain}/wp-login.php" 2>/dev/null || true)"
+    if [[ "$login_code" == "200" ]] && grep -qi 'WordPress' "$login_tmp"; then
+      ok "WordPress: wp-login.php 200 with WordPress signature (PHP executed)"
+    else
+      fail "WordPress: wp-login.php check failed (code '${login_code}')"
+    fi
+    rm -f "$login_tmp"
 
-  # 3. PHP executes rather than being served as plain text.
-  if grep -q 'PHP OK:' "$body"; then
-    ok "PHP: executed (marker reports PHP version)"
+    # 3. DB health via wp-cli when available.
+    if command -v wp >/dev/null 2>&1; then
+      if wp --path="$docroot" db check >/dev/null 2>&1; then
+        ok "DB: wp db check succeeded"
+      else
+        fail "DB: wp db check failed"
+      fi
+    else
+      warn "wp-cli not installed — DB health not probed for WordPress site"
+    fi
   else
-    fail "PHP: page did not execute / PHP marker missing"
-  fi
+    # 2. Marker content proves the correct vhost answered (not the default site).
+    if grep -q "<h1>${domain}</h1>" "$body"; then
+      ok "marker: response contains <h1>${domain}</h1>"
+    else
+      fail "marker: domain marker not found in response"
+    fi
 
-  # 4. DB connectivity from the per-domain PHP probe.
-  if grep -q 'DB OK' "$body"; then
-    ok "DB: PHP connected to MariaDB"
-  else
-    fail "DB: PHP probe did not report DB OK"
+    # 3. PHP executes rather than being served as plain text.
+    if grep -q 'PHP OK:' "$body"; then
+      ok "PHP: executed (marker reports PHP version)"
+    else
+      fail "PHP: page did not execute / PHP marker missing"
+    fi
+
+    # 4. DB connectivity from the per-domain PHP probe.
+    if grep -q 'DB OK' "$body"; then
+      ok "DB: PHP connected to MariaDB"
+    else
+      fail "DB: PHP probe did not report DB OK"
+    fi
   fi
 
   # 5. HTTP redirects to HTTPS.

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # scripts/install.sh — one-command installer (Phase: installer).
-# Usage: bash scripts/install.sh [domain ...] [--smoke]
-#   no domain  -> read config/domains.conf
+# Usage: bash scripts/install.sh [domain ...] [--smoke] [--app wordpress|static]
+#   no domain  -> read config/domains.conf (domain or domain|app)
 #   --smoke    -> run tests/smoke.sh at the end
+#   --app      -> passed through to add-domain.sh (default static)
 #   LE_STAGING=1 -> staging pass first for each domain, then production.
 # Runs on the VPS. Stops on the first failing step; safe to re-run.
 set -euo pipefail
@@ -12,17 +13,26 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/preflight.sh"
 
 declare -a domains=()
+declare -a domain_apps=()
 run_smoke=0
-for arg in "$@"; do
-  case "$arg" in
-    --smoke) run_smoke=1 ;;
+app=""
+while (( $# )); do
+  case "$1" in
+    --smoke) run_smoke=1; shift ;;
+    --app) app="${2:-}"; shift 2 ;;
     -h|--help)
-      printf 'usage: bash scripts/install.sh [domain ...] [--smoke]\n'
+      printf 'usage: bash scripts/install.sh [domain ...] [--smoke] [--app wordpress|static]\n'
       exit 0
       ;;
-    *) domains+=("$arg") ;;
+    *) domains+=("$1"); shift ;;
   esac
 done
+if [[ -n "$app" && "$app" != "wordpress" && "$app" != "static" ]]; then
+  fail "invalid --app value: $app (use wordpress or static)"
+fi
+if [[ -n "$app" ]]; then
+  for _d in "${domains[@]}"; do domain_apps+=("$app"); done
+fi
 
 log "== install.sh: one-command installer =="
 
@@ -42,16 +52,41 @@ if (( ${#domains[@]} == 0 )); then
     while IFS= read -r line || [[ -n "$line" ]]; do
       line="${line%%#*}"
       line="$(printf '%s' "$line" | tr -d '[:space:]')"
-      [[ -n "$line" ]] && domains+=("$line")
+      if [[ -z "$line" ]]; then
+        continue
+      fi
+      d="${line%%|*}"
+      a="${line#*|}"
+      if [[ "$a" == "$line" ]]; then
+        a=""
+      fi
+      if [[ -n "$app" ]]; then
+        a="$app"
+      fi
+      [[ -z "$a" ]] && a="static"
+      domains+=("$d")
+      domain_apps+=("$a")
     done < "$config"
   fi
 fi
 
+# Prepare the shared WordPress template once if any domain uses WordPress.
+need_wp=0
+for a in "${domain_apps[@]}"; do
+  [[ "$a" == "wordpress" ]] && need_wp=1
+done
+if (( need_wp )); then
+  log "-- preparing shared WordPress template --"
+  bash "${SCRIPT_DIR}/prepare-wordpress.sh"
+fi
+
 # 3. Per domain: add, then TLS (staging first when LE_STAGING=1, then production).
 step=2
-for domain in "${domains[@]}"; do
-  log "-- step ${step}: add-domain.sh ${domain} --"
-  bash "${SCRIPT_DIR}/add-domain.sh" "$domain"
+for i in "${!domains[@]}"; do
+  domain="${domains[$i]}"
+  dom_app="${domain_apps[$i]:-static}"
+  log "-- step ${step}: add-domain.sh ${domain} (app: ${dom_app}) --"
+  bash "${SCRIPT_DIR}/add-domain.sh" "$domain" --app "$dom_app"
   step=$((step + 1))
 
   if [[ "${LE_STAGING:-0}" == "1" ]]; then

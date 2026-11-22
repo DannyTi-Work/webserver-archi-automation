@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name __DOMAIN__;
+    server_name __SERVER_NAMES__;
 
     root __DOCROOT__;
     index index.php index.html;

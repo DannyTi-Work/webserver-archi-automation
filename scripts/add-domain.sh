@@ -1,22 +1,47 @@
 #!/usr/bin/env bash
 # scripts/add-domain.sh — provision one web domain (Phase 3, core feature).
-# Usage: bash scripts/add-domain.sh <domain> [--db-pass PASSWORD]
-#        (no domain) -> batch mode reading config/domains.conf
+# Usage: bash scripts/add-domain.sh <domain> [--app wordpress|static] [--db-pass PASSWORD]
+#        (no domain) -> batch mode reading config/domains.conf (domain or domain|app)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/preflight.sh
 source "${SCRIPT_DIR}/../lib/preflight.sh"
 
-domain="${1:-}"
-if [[ "${2:-}" == "--db-pass" ]]; then
-  db_pass="${3:-}"
-else
-  db_pass=""
+domain=""
+app=""
+db_pass=""
+while (( $# )); do
+  case "$1" in
+    --app)
+      app="${2:-}"
+      shift 2
+      ;;
+    --db-pass)
+      db_pass="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      printf 'usage: bash scripts/add-domain.sh <domain> [--app wordpress|static] [--db-pass PASSWORD]\n'
+      exit 0
+      ;;
+    -*)
+      fail "unknown option: $1"
+      ;;
+    *)
+      [[ -z "$domain" ]] || fail "unexpected argument: $1"
+      domain="$1"
+      shift
+      ;;
+  esac
+done
+if [[ -n "$app" && "$app" != "wordpress" && "$app" != "static" ]]; then
+  fail "invalid --app value: $app (use wordpress or static)"
 fi
 
 # Batch mode: read config/domains.conf when no domain argument is given.
 declare -a domains=()
+declare -a domain_apps=()
 if [[ -z "$domain" ]]; then
   if [[ ! -f "${REPO_ROOT}/config/domains.conf" ]]; then
     fail "no domain given and config/domains.conf not found"
@@ -24,13 +49,27 @@ if [[ -z "$domain" ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%%#*}"
     line="$(printf '%s' "$line" | tr -d '[:space:]')"
-    [[ -n "$line" ]] && domains+=("$line")
+    if [[ -z "$line" ]]; then
+      continue
+    fi
+    d="${line%%|*}"
+    a="${line#*|}"
+    if [[ "$a" == "$line" ]]; then
+      a=""
+    fi
+    if [[ -n "$app" ]]; then
+      a="$app"
+    fi
+    [[ -z "$a" ]] && a="static"
+    domains+=("$d")
+    domain_apps+=("$a")
   done < "${REPO_ROOT}/config/domains.conf"
   if (( ${#domains[@]} == 0 )); then
     fail "config/domains.conf has no domains"
   fi
 else
   domains+=("$domain")
+  domain_apps+=("${app:-static}")
 fi
 
 log "== add-domain.sh =="
@@ -79,9 +118,11 @@ CONF
   info "added nginx include for /etc/nginx/sites-enabled/*.conf"
 fi
 
-for domain in "${domains[@]}"; do
+for i in "${!domains[@]}"; do
+  domain="${domains[$i]}"
+  dom_app="${domain_apps[$i]}"
   log ""
-  log "-- domain: $domain --"
+  log "-- domain: $domain (app: $dom_app) --"
 
   # Safety gate — DNS must resolve to this VPS, duplicate check warns.
   if ! preflight_check domain "$domain"; then
@@ -106,15 +147,74 @@ for domain in "${domains[@]}"; do
     info "generated DB password stored in .env as DB_PASS_${slug}"
   fi
   db_pass_sql="$(sql_quote "$db_pass")"
+  pass_escaped="$(printf '%s' "$db_pass" | sed -e 's/[\\&|]/\\&/g')"
 
   # 2. Docroot.
   run_root mkdir -p "$docroot"
   run_root chown -R www-data:www-data "/var/www/${domain}"
   run_root chmod -R 755 "/var/www/${domain}"
 
-  # 3. Marker file that proves which vhost answered, PHP works, DB is reachable.
-  marker_tmp="$(mktemp)"
-  cat > "$marker_tmp" <<PHP
+  # 3. App-specific content.
+  if [[ "$dom_app" == "wordpress" ]]; then
+    wp_template="/var/lib/wsa/wordpress"
+    if [[ ! -f "${wp_template}/wp-settings.php" ]]; then
+      fail "WordPress template missing at $wp_template — run scripts/prepare-wordpress.sh first"
+    fi
+    if run_root test -f "${docroot}/wp-settings.php"; then
+      info "WordPress already present in $docroot — skipping copy (preserving content)"
+    else
+      run_root cp -a "${wp_template}/." "${docroot}/"
+      info "WordPress template copied into $docroot"
+    fi
+    run_root chown -R www-data:www-data "$docroot"
+    run_root find "$docroot" -type d -exec chmod 0755 {} +
+    run_root find "$docroot" -type f -exec chmod 0644 {} +
+
+    wp_config="${docroot}/wp-config.php"
+    if run_root test -f "$wp_config"; then
+      # Re-assert the DB password if .env was regenerated but the site config
+      # was preserved — otherwise MariaDB and wp-config.php drift apart.
+      if run_root grep -qF "define( 'DB_PASSWORD', '${db_pass}' );" "$wp_config"; then
+        info "wp-config.php already exists and credentials match — skipping"
+      else
+        run_root sed -i "s|define( 'DB_PASSWORD', '[^']*' );|define( 'DB_PASSWORD', '${pass_escaped}' );|" "$wp_config"
+        info "wp-config.php DB password re-asserted to match .env"
+      fi
+    else
+      if [[ -f "${SCRIPT_DIR}/../templates/wp-config.php.tpl" ]]; then
+        wptpl="${SCRIPT_DIR}/../templates/wp-config.php.tpl"
+      else
+        wptpl="${REPO_ROOT}/templates/wp-config.php.tpl"
+      fi
+      salts_tmp="$(mktemp)"
+      : > "$salts_tmp"
+      for key in AUTH_KEY SECURE_AUTH_KEY LOGGED_IN_KEY NONCE_KEY \
+                 AUTH_SALT SECURE_AUTH_SALT LOGGED_IN_SALT NONCE_SALT; do
+        printf "define( '%s', '%s' );\n" "$key" "$(gen_password 48)" >> "$salts_tmp"
+      done
+      wc_tmp="$(mktemp)"
+      sed -e "s|__DB_NAME__|${db}|g" \
+          -e "s|__DB_USER__|${dbuser}|g" \
+          -e "s|__DB_PASSWORD__|${db_pass}|g" \
+          -e "s|__TABLE_PREFIX__|${slug}_wp_|g" \
+          "$wptpl" > "$wc_tmp"
+      wc_final="$(mktemp)"
+      awk -v s="$salts_tmp" '
+        index($0, "__SALTS__") {
+          while ((getline line < s) > 0) print line
+          close(s)
+          next
+        }
+        { print }
+      ' "$wc_tmp" > "$wc_final"
+      run_root install -o www-data -g www-data -m 0640 "$wc_final" "$wp_config"
+      rm -f "$salts_tmp" "$wc_tmp" "$wc_final"
+      info "wp-config.php generated for $domain (prefix ${slug}_wp_)"
+    fi
+  else
+    # Static site marker: proves which vhost answered, PHP works, DB is reachable.
+    marker_tmp="$(mktemp)"
+    cat > "$marker_tmp" <<PHP
 <?php
 echo "<h1>${domain}</h1>\n";
 echo "PHP OK: " . PHP_VERSION . "<br>\n";
@@ -125,17 +225,17 @@ try {
     echo "DB FAIL: " . \$e->getMessage();
 }
 PHP
-  # Replace the password placeholder safely (escapes for sed replacement).
-  pass_escaped="$(printf '%s' "$db_pass" | sed -e 's/[\\&|]/\\&/g')"
-  sed -i "s|__DB_PASS__|${pass_escaped}|" "$marker_tmp"
-  if run_root test -f "${docroot}/index.php" && \
-     run_root cmp -s "$marker_tmp" "${docroot}/index.php"; then
-    info "marker file already up to date — skipping"
-  else
-    run_root install -o www-data -g www-data -m 0644 "$marker_tmp" "${docroot}/index.php"
-    info "marker file created/updated at ${docroot}/index.php"
+    # Replace the password placeholder safely (escapes for sed replacement).
+    sed -i "s|__DB_PASS__|${pass_escaped}|" "$marker_tmp"
+    if run_root test -f "${docroot}/index.php" && \
+       run_root cmp -s "$marker_tmp" "${docroot}/index.php"; then
+      info "marker file already up to date — skipping"
+    else
+      run_root install -o www-data -g www-data -m 0644 "$marker_tmp" "${docroot}/index.php"
+      info "marker file created/updated at ${docroot}/index.php"
+    fi
+    rm -f "$marker_tmp"
   fi
-  rm -f "$marker_tmp"
 
   # 4. Database + least-privilege user.
 
@@ -162,8 +262,16 @@ PHP
   else
     tpl="${REPO_ROOT}/templates/nginx-vhost.conf.tpl"
   fi
+  # Include www.<domain> in server_name when it resolves to this VPS so
+  # certbot can install a certificate covering both names.
+  server_names="${domain}"
+  www_ip="$(dig +short A "www.${domain}" @8.8.8.8 2>/dev/null | head -1 || true)"
+  if [[ -n "$www_ip" ]]; then
+    server_names="${domain} www.${domain}"
+  fi
   vhost_tmp="$(mktemp)"
   sed -e "s|__DOMAIN__|${domain}|g" \
+      -e "s|__SERVER_NAMES__|${server_names}|g" \
       -e "s|__DOCROOT__|${docroot}|g" \
       -e "s|__PHP_SOCKET__|${fpm_socket}|g" \
       "$tpl" > "$vhost_tmp"
@@ -206,7 +314,7 @@ PHP
   config_test "nginx" nginx -t
   reload_service nginx
 
-  log "done: $domain (docroot $docroot, DB $db, user $dbuser)"
+  log "done: $domain (app $dom_app, docroot $docroot, DB $db, user $dbuser)"
 done
 
 log ""

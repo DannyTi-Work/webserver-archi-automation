@@ -186,15 +186,15 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 
 ## Phase 7 — WordPress app provisioning (shared template)
 
-- [ ] `scripts/prepare-wordpress.sh` — download WordPress once into `/var/lib/wsa/wordpress/` (root-owned, dirs 0755 / files 0644), record version + sha256, `--update` refreshes; no-op if already present
-- [ ] `templates/wp-config.php.tpl` — placeholders for DB name/user/password/table-prefix + salts
-- [ ] `scripts/add-domain.sh` accepts `--app wordpress|static` (default `static`, preserving Phase 3 behaviour)
-- [ ] With `--app wordpress`: copy shared template into docroot, render `wp-config.php` from the domain's DB/user/password, generate per-domain salts + unique table prefix, `chown www-data`
-- [ ] vhost + DB/user + `nginx -t` gate continue exactly as in Phase 3
-- [ ] `config/domains.conf` accepts optional `domain|app` second field (plain `domain` still valid)
-- [ ] `scripts/install.sh` passes `--app` through to `add-domain.sh`; batch mode reads the app field
-- [ ] `tests/smoke.sh` becomes app-aware: detect `wp-config.php`; for WordPress check `wp-login.php` 200 + WordPress signature, DB via `wp db check` if wp-cli exists (else WARN); static sites keep marker checks
-- [ ] Idempotency: skip if WordPress already present; never overwrite existing site content
+- [x] `scripts/prepare-wordpress.sh` — download WordPress once into `/var/lib/wsa/wordpress/` (root-owned, dirs 0755 / files 0644), record version + sha256, `--update` refreshes; no-op if already present
+- [x] `templates/wp-config.php.tpl` — placeholders for DB name/user/password/table-prefix + salts
+- [x] `scripts/add-domain.sh` accepts `--app wordpress|static` (default `static`, preserving Phase 3 behaviour)
+- [x] With `--app wordpress`: copy shared template into docroot, render `wp-config.php` from the domain's DB/user/password, generate per-domain salts + unique table prefix, `chown www-data`
+- [x] vhost + DB/user + `nginx -t` gate continue exactly as in Phase 3
+- [x] `config/domains.conf` accepts optional `domain|app` second field (plain `domain` still valid)
+- [x] `scripts/install.sh` passes `--app` through to `add-domain.sh`; batch mode reads the app field
+- [x] `tests/smoke.sh` becomes app-aware: detect `wp-config.php`; for WordPress check `wp-login.php` 200 + WordPress signature, DB via `wp db check` if wp-cli exists (else WARN); static sites keep marker checks
+- [x] Idempotency: skip if WordPress already present; never overwrite existing site content
 
 ---
 
