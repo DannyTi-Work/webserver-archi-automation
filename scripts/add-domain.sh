@@ -8,6 +8,12 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/preflight.sh
 source "${SCRIPT_DIR}/../lib/preflight.sh"
 
+# This is when user runs add-domain.sh with a single domain argument, 
+# e.g. `bash scripts/add-domain.sh example.com`.
+# optional flags:
+#   --app wordpress|static (default static)
+#   --db-pass PASSWORD (optional, will generate if not provided)
+#   -h|--help (show usage)
 domain=""
 app=""
 db_pass=""
