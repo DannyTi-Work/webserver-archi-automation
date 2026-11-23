@@ -1,5 +1,6 @@
 .opencode
 .env
+.ssh.env
 config/.env
 *.retry
 *.log
@@ -9,3 +10,4 @@ config/panel.conf
 config/panel.htpasswd
 config/panel.session.key
 scripts/panel/config.local.php
+webserver-archi-automation.code-workspace
