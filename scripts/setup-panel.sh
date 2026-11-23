@@ -204,6 +204,38 @@ run_root ufw allow "${PANEL_PORT}/tcp" >/dev/null
 info "UFW allows ${PANEL_PORT}/tcp — open TCP ${PANEL_PORT} in the cloud security group manually"
 
 # ---------------------------------------------------------------------------
+# 7b. PHP-FPM sandbox exception
+# ---------------------------------------------------------------------------
+# Panel actions call these scripts via sudo from inside PHP-FPM. The packaged
+# unit uses ProtectSystem=full, which makes /etc read-only; sudo changes the
+# UID but the read-only mount namespace is inherited, so certbot's lock file
+# (/etc/letsencrypt/.certbot.lock) and nginx vhost writes fail with EROFS.
+if [[ "$PHP_FPM_SOCKET" =~ /run/php/php([0-9]+\.[0-9]+)-fpm\.sock$ ]]; then
+  fpm_service="php${BASH_REMATCH[1]}-fpm"
+else
+  fpm_service="php-fpm"
+fi
+fpm_dropin_dir="/etc/systemd/system/${fpm_service}.service.d"
+fpm_dropin="${fpm_dropin_dir}/10-wsa-panel.conf"
+dropin_tmp="$(mktemp)"
+cat > "$dropin_tmp" <<'EOF'
+[Service]
+# Required for panel actions that call sudo-guarded scripts: certbot needs
+# /etc/letsencrypt writable and nginx vhosts live under /etc/nginx.
+ReadWritePaths=/etc/letsencrypt /etc/nginx
+EOF
+if run_root test -f "$fpm_dropin" && run_root cmp -s "$dropin_tmp" "$fpm_dropin"; then
+  info "php-fpm sandbox drop-in already up to date"
+else
+  run_root install -d -m 0755 "$fpm_dropin_dir"
+  run_root install -m 0644 "$dropin_tmp" "$fpm_dropin"
+  run_root systemctl daemon-reload
+  run_root systemctl restart "$fpm_service"
+  info "installed php-fpm sandbox exception; restarted $fpm_service"
+fi
+rm -f "$dropin_tmp"
+
+# ---------------------------------------------------------------------------
 # 8. Optional fail2ban jail for Basic Auth failures on the panel log
 # ---------------------------------------------------------------------------
 if [[ "$FAIL2BAN_ENABLED" == "1" ]]; then

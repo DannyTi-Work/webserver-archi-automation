@@ -61,6 +61,10 @@ server {
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         fastcgi_param PATH_INFO       $fastcgi_path_info;
         fastcgi_pass  unix:__PHP_FPM_SOCKET__;
+        # certbot renew --dry-run and WordPress downloads can exceed nginx's
+        # default 60s FastCGI read timeout; the PHP action wrapper has a 600s cap.
+        fastcgi_read_timeout 600;
+        fastcgi_send_timeout 600;
         limit_req     zone=wsa_panel burst=10 nodelay;
     }
 }

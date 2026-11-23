@@ -4,6 +4,10 @@
 #   bash scripts/tls.sh <domain>                 # production cert
 #   LE_STAGING=1 bash scripts/tls.sh <domain>    # staging cert first
 #   bash scripts/tls.sh --renew-dry-run          # quick renewal check
+#
+# Renewal dry-runs pass --no-random-sleep-on-renew (certbot 2.x): otherwise
+# certbot inserts a hidden 1-480s random delay per lineage, which makes a
+# panel action time out even when the renewal itself succeeds.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,7 +23,7 @@ if [[ "${1:-}" == "--renew-dry-run" ]]; then
     fail "certbot is not installed — run tls.sh <domain> first"
   fi
   log "-- renewal dry-run --"
-  run_root certbot renew --dry-run
+  run_root certbot renew --no-random-sleep-on-renew --dry-run
   log "-- renewal timer --"
   if systemctl list-timers --no-pager 2>/dev/null | grep -q certbot.timer; then
     info "certbot.timer is active"
@@ -179,7 +183,7 @@ fi
 
 # 7. Renewal dry-run.
 log "-- renewal dry-run --"
-run_root certbot renew --dry-run
+run_root certbot renew --no-random-sleep-on-renew --dry-run
 
 # 8. Renewal timer.
 log "-- renewal timer --"
