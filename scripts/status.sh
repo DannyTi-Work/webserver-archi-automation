@@ -12,7 +12,8 @@
 #     "php_fpm": "active|inactive|failed|unknown",
 #     "php_version": "8.3", "fpm_service": "php8.3-fpm",
 #     "certbot_timer": "active|inactive|failed|unknown",
-#     "ufw": "active|inactive|unknown"
+#     "ufw": "active|inactive|unknown",
+#     "default_reject": "present|absent"  (managed default_server config)
 #   },
 #   "domains": [
 #     {
@@ -76,6 +77,9 @@ stack_certbot="$(service_state certbot.timer)"
 stack_ufw="$(ufw status 2>/dev/null | sed -n 's/^Status: //p' || true)"
 [[ -z "$stack_ufw" ]] && stack_ufw="unknown"
 
+default_reject="absent"
+[[ -f /etc/nginx/conf.d/00-default-reject.conf ]] && default_reject="present"
+
 # ---------------------------------------------------------------------------
 # WordPress version: wp-cli first, then the site's own version.php, then the
 # shared template metadata as a last resort (new sites copied from it).
@@ -103,7 +107,8 @@ for d in /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf; do
   [[ -f "$d" ]] || continue
   base="$(basename "$d")"
   # panel.conf is the Phase 8 admin listener, not a customer domain.
-  [[ "$base" == "default.conf" || "$base" == "zz-sites-enabled.conf" || "$base" == "panel.conf" ]] && continue
+  [[ "$base" == "default.conf" || "$base" == "zz-sites-enabled.conf" || \
+     "$base" == "panel.conf" || "$base" == "00-default-reject.conf" ]] && continue
   vhosts+=("$d")
 done
 
@@ -156,8 +161,8 @@ emit_json() {
   [[ -f "${docroot}/wp-config.php" ]] && app="wordpress"
   [[ "$app" == "wordpress" ]] && wp_ver="$(wp_version_for "$docroot")"
 
-  http_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "http://${domain}/" 2>/dev/null || echo 000)"
-  https_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${domain}/" 2>/dev/null || echo 000)"
+  http_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "http://${domain}/" 2>/dev/null)" || http_code="000"
+  https_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${domain}/" 2>/dev/null)" || https_code="000"
 
   access_log="/var/log/nginx/${domain}.access.log"
   error_log="/var/log/nginx/${domain}.error.log"
@@ -202,7 +207,8 @@ if (( json )); then
   printf '    "php_version": "%s",\n' "$(json_escape "$php_ver")"
   printf '    "fpm_service": "%s",\n' "$(json_escape "$fpm_service")"
   printf '    "certbot_timer": "%s",\n' "$stack_certbot"
-  printf '    "ufw": "%s"\n' "$stack_ufw"
+  printf '    "ufw": "%s",\n' "$stack_ufw"
+  printf '    "default_reject": "%s"\n' "$default_reject"
   printf '  },\n'
   printf '  "domains": [\n'
   first=1
@@ -215,8 +221,9 @@ if (( json )); then
   exit 0
 fi
 
-printf 'STACK  nginx=%s  mariadb=%s  php-fpm=%s  certbot.timer=%s  ufw=%s  (PHP %s, %s)\n' \
-  "$stack_nginx" "$stack_mariadb" "$stack_php_fpm" "$stack_certbot" "$stack_ufw" "$php_ver" "$fpm_service"
+printf 'STACK  nginx=%s  mariadb=%s  php-fpm=%s  certbot.timer=%s  ufw=%s  default-reject=%s  (PHP %s, %s)\n' \
+  "$stack_nginx" "$stack_mariadb" "$stack_php_fpm" "$stack_certbot" "$stack_ufw" \
+  "$default_reject" "$php_ver" "$fpm_service"
 printf '\n'
 printf '%-36s %-10s %-8s %-6s %-8s %-6s %-8s\n' \
   "DOMAIN" "APP" "WP_VER" "DB" "CERT" "HTTP" "HTTPS"
@@ -234,8 +241,8 @@ for v in "${vhosts[@]}"; do
   db_state="no"; db_exists "$db" 2>/dev/null && db_state="yes"
   cert_state="no"
   [[ -f "/etc/letsencrypt/live/${domain}/fullchain.pem" ]] && cert_state="yes"
-  http_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "http://${domain}/" 2>/dev/null || echo 000)"
-  https_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${domain}/" 2>/dev/null || echo 000)"
+  http_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "http://${domain}/" 2>/dev/null)" || http_code="000"
+  https_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${domain}/" 2>/dev/null)" || https_code="000"
   printf '%-36s %-10s %-8s %-6s %-8s %-6s %-8s\n' \
     "$domain" "$app" "$wp_ver" "$db_state" "$cert_state" "$http_code" "$https_code"
 done

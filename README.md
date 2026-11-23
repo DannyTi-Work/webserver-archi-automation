@@ -53,6 +53,10 @@ Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains.
      (least privilege)                   (least privilege)
 ```
 
+### Fail-closed default server
+
+`setup.sh` installs a managed `/etc/nginx/conf.d/00-default-reject.conf` (from `templates/nginx-default-reject.conf.tpl`). Any request whose `Host` matches no `server_name` is dropped on :80 (`return 444`) or refused during the TLS handshake on :443 (`ssl_reject_handshake on`). This prevents a domain **without** TLS from being served by another domain's HTTPS vhost on a shared IP. It is installed idempotently behind `nginx -t`; a conflicting `default_server` elsewhere makes setup warn and skip rather than break nginx. `scripts/status.sh` reports it as `default_reject: present|absent`.
+
 ### Checking phase (preflight)
 
 ```text

@@ -323,6 +323,23 @@ pf_resources() {
 }
 
 # ---------------------------------------------------------------------------
+# 7. nginx default server (managed by setup.sh)
+# ---------------------------------------------------------------------------
+pf_nginx_defaults() {
+  local reject="/etc/nginx/conf.d/00-default-reject.conf"
+  if [[ -f "$reject" ]] && grep -q 'default_server' "$reject"; then
+    pf_ok "managed default-reject config installed"
+  else
+    pf_warn "no managed default_server config — unmatched Hosts fall back to the first server block"
+  fi
+  local others
+  others="$(grep -RlE 'listen[[:space:]]+([^;]*[[:space:]])?default_server' \
+    /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf 2>/dev/null \
+    | grep -vF "$reject" || true)"
+  [[ -n "$others" ]] && pf_warn "other default_server declarations: ${others//$'\n'/ }"
+}
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 preflight_check() {
@@ -338,6 +355,7 @@ preflight_check() {
   pf_package_manager
   pf_panel_conflicts
   pf_resources
+  pf_nginx_defaults
 
   case "$profile" in
     base)

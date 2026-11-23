@@ -113,6 +113,31 @@ else
   info "nginx default site already absent"
 fi
 
+# ---------------------------------------------------------------------------
+# Managed default server — fail closed for Hosts that match no server_name.
+# Without this, nginx picks the first block per listener; on :443 that can be
+# another domain's TLS vhost, leaking one site's content to another domain.
+# ---------------------------------------------------------------------------
+DEFAULT_REJECT="/etc/nginx/conf.d/00-default-reject.conf"
+DEFAULT_TPL="${SCRIPT_DIR}/../templates/nginx-default-reject.conf.tpl"
+[[ -f "$DEFAULT_TPL" ]] || DEFAULT_TPL="${REPO_ROOT}/templates/nginx-default-reject.conf.tpl"
+if [[ ! -f "$DEFAULT_TPL" ]]; then
+  warn "default-reject template not found ($DEFAULT_TPL) — unmatched Hosts may fall through"
+else
+  # Only one default_server is allowed per address:port; never create a conflict.
+  other_defaults="$(grep -RlE 'listen[[:space:]]+([^;]*[[:space:]])?default_server' \
+    /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf 2>/dev/null \
+    | grep -vF "$DEFAULT_REJECT" || true)"
+  if [[ -n "$other_defaults" ]]; then
+    warn "other default_server declarations found: ${other_defaults//$'\n'/ } — skipping managed default-reject install"
+  elif run_root test -f "$DEFAULT_REJECT" && run_root cmp -s "$DEFAULT_TPL" "$DEFAULT_REJECT"; then
+    info "managed default-reject config already up to date"
+  else
+    run_root install -m 0644 "$DEFAULT_TPL" "$DEFAULT_REJECT"
+    info "installed managed default-reject config: $DEFAULT_REJECT"
+  fi
+fi
+
 config_test "nginx" nginx -t
 reload_service nginx
 

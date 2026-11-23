@@ -154,6 +154,7 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 - [x] Confirm the renewal timer (`systemctl list-timers | grep certbot`) is active
 - [x] Confirm HTTPS vhosts serve 200 and HTTP redirects to HTTPS
 - [x] Support `--renew-dry-run` as a quick protocol command
+- [x] Managed default server (`templates/nginx-default-reject.conf.tpl`, installed by `setup.sh`): unmatched Hosts fail closed on :80 (`return 444`) and :443 (`ssl_reject_handshake`) so a domain without TLS can never fall through to another domain's HTTPS vhost
 
 ---
 
