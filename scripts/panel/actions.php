@@ -29,6 +29,11 @@ if (stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== false) {
     $input = $_POST;
 }
 
+// JSON requests carry the action in the body rather than $_GET/$_POST.
+if ($action === '' && isset($input['action'])) {
+    $action = (string) $input['action'];
+}
+
 $token = $input['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? null);
 if (!csrf_valid($token)) {
     json_response(['ok' => false, 'error' => 'invalid CSRF token'], 403);

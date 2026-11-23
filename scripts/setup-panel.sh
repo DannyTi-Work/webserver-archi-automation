@@ -141,7 +141,8 @@ for f in bootstrap.php index.php actions.php; do
 done
 # Tell the copied PHP files where the real checkout lives (config, scripts).
 local_cfg="$(mktemp)"
-printf '<?php\ndefine("WSA_REPO_ROOT", "%s");\n' "$REPO_ROOT" > "$local_cfg"
+printf '<?php\ndefine("WSA_REPO_ROOT", "%s");\ndefine("WSA_PANEL_DOMAIN", "%s");\ndefine("WSA_PANEL_PORT", "%s");\ndefine("WSA_ADMIN_PATH", "%s");\n' \
+  "$REPO_ROOT" "$PANEL_DOMAIN" "$PANEL_PORT" "$ADMIN_PATH" > "$local_cfg"
 run_root install -o root -g www-data -m 0640 "$local_cfg" "${PANEL_PHP_DIR}/config.local.php"
 rm -f "$local_cfg"
 info "panel PHP installed at $PANEL_PHP_DIR"
@@ -154,6 +155,8 @@ if ! command -v htpasswd >/dev/null 2>&1 && ! pkg_installed apache2-utils; then
 fi
 if run_root test -f "$HTPASSWD_FILE"; then
   info "htpasswd file already exists — existing password preserved: $HTPASSWD_FILE"
+  run_root chown root:www-data "$HTPASSWD_FILE"
+  run_root chmod 0640 "$HTPASSWD_FILE"
 else
   if [[ -n "${PANEL_PASSWORD:-}" ]]; then
     auth_pw="$PANEL_PASSWORD"
@@ -161,7 +164,8 @@ else
     auth_pw="$(gen_password 20)"
   fi
   printf '%s\n' "$auth_pw" | run_root htpasswd -B -i -c "$HTPASSWD_FILE" "$BASIC_AUTH_USER"
-  run_root chown root:root "$HTPASSWD_FILE"
+  # nginx worker processes (www-data) open auth_basic_user_file, not the master.
+  run_root chown root:www-data "$HTPASSWD_FILE"
   run_root chmod 0640 "$HTPASSWD_FILE"
   if [[ -z "${PANEL_PASSWORD:-}" ]]; then
     info "generated Basic Auth password for '${BASIC_AUTH_USER}': ${auth_pw}"

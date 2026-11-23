@@ -23,10 +23,12 @@ function panel_config(): array
         return $cfg;
     }
 
+    // setup-panel.sh mirrors these values into config.local.php because
+    // config/panel.conf sits in a root-only checkout that www-data cannot read.
     $cfg = [
-        'PANEL_DOMAIN' => 'example.com',
-        'PANEL_PORT' => '8083',
-        'ADMIN_PATH' => '/_wsa-admin',
+        'PANEL_DOMAIN' => defined('WSA_PANEL_DOMAIN') ? WSA_PANEL_DOMAIN : 'example.com',
+        'PANEL_PORT' => defined('WSA_PANEL_PORT') ? WSA_PANEL_PORT : '8083',
+        'ADMIN_PATH' => defined('WSA_ADMIN_PATH') ? WSA_ADMIN_PATH : '/_wsa-admin',
         'BASIC_AUTH_USER' => 'admin',
         'SESSION_SECRET_FILE' => '/etc/wsa/panel-session.key',
         'WP_TEMPLATE_DIR' => '/var/lib/wsa/wordpress',
@@ -135,10 +137,9 @@ function run_privileged(string $key, array $args = [], array $env = [], int $tim
     if (!isset($scripts[$key])) {
         return [1, '', "unknown script key: {$key}"];
     }
+    // Do NOT stat() the script here: the checkout is under /root and www-data
+    // cannot traverse it. sudo runs the script as root, which can reach it.
     $script = $scripts[$key];
-    if (!is_file($script)) {
-        return [1, '', "script not found: {$script}"];
-    }
 
     $cmd = ['/usr/bin/sudo', '-n', '/usr/bin/bash', $script, ...array_values($args)];
     $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
@@ -147,7 +148,8 @@ function run_privileged(string $key, array $args = [], array $env = [], int $tim
         $processEnv[$name] = (string) $value;
     }
 
-    $proc = @proc_open($cmd, $descriptors, $pipes, PANEL_REPO_ROOT, $processEnv);
+    // Neutral cwd: www-data cannot chdir into the root-only checkout.
+    $proc = @proc_open($cmd, $descriptors, $pipes, '/', $processEnv);
     if (!is_resource($proc)) {
         return [1, '', 'could not start privileged process'];
     }
