@@ -1,0 +1,24 @@
+# config/sudoers-panel.conf.example — sudoers drop-in for the web panel (Phase 8).
+#
+# Install on the VPS (as root):
+#   sed "s|__REPO_ROOT__|$(pwd)|g" config/sudoers-panel.conf.example \
+#     > /etc/sudoers.d/wsa-panel
+#   chmod 0440 /etc/sudoers.d/wsa-panel
+#   visudo -c -f /etc/sudoers.d/wsa-panel
+#
+# SECURITY: these specs let the web-server user run the listed scripts as root.
+# The repository directory MUST NOT be writable by www-data — writable scripts
+# would be a direct privilege-escalation path. Each script keeps its own
+# preflight, validation and idempotency checks; the panel adds no new privileges.
+#
+# The '*' wildcard permits any arguments, but actions.php must build argv as an
+# array (proc_open with an array, never a shell string) and validate the domain
+# before calling sudo. The scripts themselves are the final validation layer.
+
+www-data ALL=(root) NOPASSWD: \
+    /usr/bin/bash __REPO_ROOT__/scripts/status.sh *, \
+    /usr/bin/bash __REPO_ROOT__/scripts/add-domain.sh *, \
+    /usr/bin/bash __REPO_ROOT__/scripts/tls.sh *, \
+    /usr/bin/bash __REPO_ROOT__/scripts/remove-domain.sh *, \
+    /usr/bin/bash __REPO_ROOT__/scripts/prepare-wordpress.sh *, \
+    /usr/bin/bash __REPO_ROOT__/tests/smoke.sh *

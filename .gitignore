@@ -3,3 +3,9 @@
 config/.env
 *.retry
 *.log
+
+# Phase 8 web panel — local config and secrets
+config/panel.conf
+config/panel.htpasswd
+config/panel.session.key
+scripts/panel/config.local.php
