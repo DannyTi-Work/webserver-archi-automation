@@ -318,6 +318,7 @@ webserver-archi-automation/
 │   ├── prepare-wordpress.sh    # one-time shared WordPress template download
 │   ├── status.sh               # machine-readable state dump (panel, smoke)
 │   ├── setup-panel.sh          # install panel vhost, auth, sudoers, UFW, renewal hook
+│   ├── uninstall-panel.sh      # remove panel artifacts; keep sites, certs and stack
 │   ├── panel/
 │   │   ├── bootstrap.php       # config, CSRF, sudo exec helpers
 │   │   ├── index.php           # dashboard
