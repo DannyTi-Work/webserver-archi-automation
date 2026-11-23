@@ -48,10 +48,10 @@ $need_domain = static function (string $value): void {
 $respond = static function (array $result): void {
     [$exit, $stdout, $stderr] = $result;
     json_response([
-        'ok'        => $exit === 0,
+        'ok' => $exit === 0,
         'exit_code' => $exit,
-        'output'    => substr($stdout, 0, 20000),
-        'error'     => substr($stderr, 0, 20000),
+        'output' => substr($stdout, 0, 20000),
+        'error' => substr($stderr, 0, 20000),
     ], $exit === 0 ? 200 : 500);
 };
 

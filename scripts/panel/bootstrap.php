@@ -3,7 +3,13 @@
 // Included by both index.php and actions.php. Never served directly by nginx.
 declare(strict_types=1);
 
-define('PANEL_REPO_ROOT', dirname(__DIR__, 2));
+// setup-panel.sh copies these files outside the repo (PANEL_ROOT) and drops a
+// config.local.php there pointing back at the real checkout. When running the
+// panel straight from the repo, fall back to the normal relative location.
+if (!defined('WSA_REPO_ROOT') && is_file(__DIR__ . '/config.local.php')) {
+    require __DIR__ . '/config.local.php';
+}
+define('PANEL_REPO_ROOT', defined('WSA_REPO_ROOT') ? WSA_REPO_ROOT : dirname(__DIR__, 2));
 
 /**
  * Load config/panel.conf (gitignored, mode 600). Missing keys fall back to
@@ -18,12 +24,12 @@ function panel_config(): array
     }
 
     $cfg = [
-        'PANEL_DOMAIN'        => 'example.com',
-        'PANEL_PORT'          => '8083',
-        'ADMIN_PATH'          => '/_wsa-admin',
-        'BASIC_AUTH_USER'     => 'admin',
+        'PANEL_DOMAIN' => 'example.com',
+        'PANEL_PORT' => '8083',
+        'ADMIN_PATH' => '/_wsa-admin',
+        'BASIC_AUTH_USER' => 'admin',
         'SESSION_SECRET_FILE' => '/etc/wsa/panel-session.key',
-        'WP_TEMPLATE_DIR'     => '/var/lib/wsa/wordpress',
+        'WP_TEMPLATE_DIR' => '/var/lib/wsa/wordpress',
     ];
 
     $file = PANEL_REPO_ROOT . '/config/panel.conf';
@@ -36,9 +42,11 @@ function panel_config(): array
             [$key, $value] = explode('=', $line, 2);
             $key = trim($key);
             $value = trim($value);
-            if (strlen($value) >= 2 &&
+            if (
+                strlen($value) >= 2 &&
                 (($value[0] === '"' && substr($value, -1) === '"') ||
-                 ($value[0] === "'" && substr($value, -1) === "'"))) {
+                    ($value[0] === "'" && substr($value, -1) === "'"))
+            ) {
                 $value = substr($value, 1, -1);
             }
             $cfg[$key] = $value;
@@ -58,8 +66,8 @@ function panel_session(): void
     session_set_cookie_params([
         'httponly' => true,
         'samesite' => 'Strict',
-        'secure'   => true,
-        'path'     => panel_config()['ADMIN_PATH'] ?: '/',
+        'secure' => true,
+        'path' => panel_config()['ADMIN_PATH'] ?: '/',
     ]);
     session_start();
 }
@@ -97,12 +105,12 @@ function panel_scripts(): array
 {
     $root = PANEL_REPO_ROOT;
     return [
-        'status'     => $root . '/scripts/status.sh',
-        'add'        => $root . '/scripts/add-domain.sh',
-        'tls'        => $root . '/scripts/tls.sh',
-        'remove'     => $root . '/scripts/remove-domain.sh',
+        'status' => $root . '/scripts/status.sh',
+        'add' => $root . '/scripts/add-domain.sh',
+        'tls' => $root . '/scripts/tls.sh',
+        'remove' => $root . '/scripts/remove-domain.sh',
         'prepare_wp' => $root . '/scripts/prepare-wordpress.sh',
-        'smoke'      => $root . '/tests/smoke.sh',
+        'smoke' => $root . '/tests/smoke.sh',
     ];
 }
 

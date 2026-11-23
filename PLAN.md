@@ -317,6 +317,7 @@ webserver-archi-automation/
 │   ├── install.sh              # one-command installer (setup + add-domain + tls, --app passthrough)
 │   ├── prepare-wordpress.sh    # one-time shared WordPress template download
 │   ├── status.sh               # machine-readable state dump (panel, smoke)
+│   ├── setup-panel.sh          # install panel vhost, auth, sudoers, UFW, renewal hook
 │   ├── panel/
 │   │   ├── bootstrap.php       # config, CSRF, sudo exec helpers
 │   │   ├── index.php           # dashboard
