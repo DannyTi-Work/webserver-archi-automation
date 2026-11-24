@@ -159,9 +159,15 @@ fi
 # 5. Optional config purge (last, so failures above keep the settings)
 # ---------------------------------------------------------------------------
 if (( purge_config )) && [[ -f "$CONFIG" ]]; then
-  run_root cp -a -- "$CONFIG" "${backup_dir}${CONFIG}"
-  run_root rm -f -- "$CONFIG"
-  info "panel config purged: $CONFIG"
+  # Ensure the backup destination directory exists (the startup backup loop
+  # only covers targets[], which does not include config/panel.conf).
+  run_root mkdir -p "${backup_dir}$(dirname -- "$CONFIG")"
+  if run_root cp -a -- "$CONFIG" "${backup_dir}${CONFIG}"; then
+    run_root rm -f -- "$CONFIG"
+    info "panel config purged: $CONFIG"
+  else
+    warn "could not back up $CONFIG — keeping it; remove manually if desired"
+  fi
 else
   info "panel config kept: $CONFIG (use --purge-config to delete it)"
 fi
