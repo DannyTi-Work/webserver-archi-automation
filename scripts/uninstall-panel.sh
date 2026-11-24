@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # scripts/uninstall-panel.sh — remove the Phase 8 web admin panel.
-# Usage: bash scripts/uninstall-panel.sh [--yes] [--purge-config]
+# Usage: bash scripts/uninstall-panel.sh [--yes] [--purge-config] [--purge-log]
 #   --yes          skip the typed confirmation (for automation)
 #   --purge-config also delete config/panel.conf (gitignored local settings)
+#   --purge-log    also delete the persistent action log (kept by default)
 #
 # Removes only panel artifacts. Site vhosts, docroots, databases, certificates
 # (including the apex cert the panel reused) and the LEMP stack are untouched.
@@ -16,12 +17,14 @@ require_root
 
 assume_yes=0
 purge_config=0
+purge_log=0
 while (( $# )); do
   case "$1" in
     --yes)          assume_yes=1; shift ;;
     --purge-config) purge_config=1; shift ;;
+    --purge-log)    purge_log=1; shift ;;
     -h|--help)
-      printf 'usage: bash scripts/uninstall-panel.sh [--yes] [--purge-config]\n'
+      printf 'usage: bash scripts/uninstall-panel.sh [--yes] [--purge-config] [--purge-log]\n'
       exit 0
       ;;
     *) fail "unknown option: $1" ;;
@@ -51,6 +54,7 @@ PANEL_ROOT="$(conf PANEL_ROOT || printf '/srv/wsa-panel/public')"
 HTPASSWD_FILE="$(conf HTPASSWD_FILE || printf '/etc/nginx/.wsa-panel-htpasswd')"
 SESSION_SECRET_FILE="$(conf SESSION_SECRET_FILE || printf '/etc/wsa/panel-session.key')"
 SUDOERS_FILE="$(conf SUDOERS_FILE || printf '/etc/sudoers.d/wsa-panel')"
+ACTION_LOG="$(conf ACTION_LOG || printf '/var/log/wsa-panel/actions.log')"
 
 # Refuse unsafe derived paths before any rm.
 [[ -n "$PANEL_ROOT" && "$PANEL_ROOT" == /* && "$PANEL_ROOT" != "/" ]] || \
@@ -170,6 +174,23 @@ if (( purge_config )) && [[ -f "$CONFIG" ]]; then
   fi
 else
   info "panel config kept: $CONFIG (use --purge-config to delete it)"
+fi
+
+# ---------------------------------------------------------------------------
+# 5b. Optional action-log purge (kept by default for inspection)
+# ---------------------------------------------------------------------------
+if (( purge_log )) && [[ -n "$ACTION_LOG" && "$ACTION_LOG" == /* && "$ACTION_LOG" != "/" ]]; then
+  if run_root test -f "$ACTION_LOG"; then
+    run_root mkdir -p "${backup_dir}$(dirname -- "$ACTION_LOG")"
+    if run_root cp -a -- "$ACTION_LOG" "${backup_dir}${ACTION_LOG}"; then
+      run_root rm -f -- "$ACTION_LOG"
+      info "action log purged: $ACTION_LOG"
+    else
+      warn "could not back up $ACTION_LOG — keeping it"
+    fi
+  fi
+else
+  info "action log kept: $ACTION_LOG (use --purge-log to delete it)"
 fi
 
 # ---------------------------------------------------------------------------

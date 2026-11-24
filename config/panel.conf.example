@@ -63,5 +63,10 @@ WP_TEMPLATE_DIR="/var/lib/wsa/wordpress"
 PANEL_ACCESS_LOG="/var/log/nginx/wsa-panel.access.log"
 PANEL_ERROR_LOG="/var/log/nginx/wsa-panel.error.log"
 
+# Persistent action log: every panel action appends one JSON line here,
+# for both successes and failures. The dashboard reads the last 30 entries.
+# setup-panel.sh creates the directory (root:www-data 0750) so PHP can append.
+ACTION_LOG="/var/log/wsa-panel/actions.log"
+
 # sudoers drop-in rendered from config/sudoers-panel.conf.example by setup-panel.sh.
 SUDOERS_FILE="/etc/sudoers.d/wsa-panel"

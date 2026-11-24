@@ -32,6 +32,7 @@ function panel_config(): array
         'BASIC_AUTH_USER' => 'admin',
         'SESSION_SECRET_FILE' => '/etc/wsa/panel-session.key',
         'WP_TEMPLATE_DIR' => '/var/lib/wsa/wordpress',
+        'ACTION_LOG' => defined('WSA_ACTION_LOG') ? WSA_ACTION_LOG : '/var/log/wsa-panel/actions.log',
     ];
 
     $file = PANEL_REPO_ROOT . '/config/panel.conf';
@@ -123,6 +124,49 @@ function panel_valid_domain(string $domain): bool
         '/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i',
         $domain
     );
+}
+
+/**
+ * Append one JSON line to the persistent action log (both successes and
+ * failures). The log lives outside the checkout so it survives reinstalls.
+ */
+function action_log(string $action, string $outcome, int $exit, string $args, string $stdout, string $stderr): void
+{
+    $path = panel_config()['ACTION_LOG'] ?: '/var/log/wsa-panel/actions.log';
+    $entry = [
+        'ts' => date('c'),
+        'action' => $action,
+        'outcome' => $outcome,      // success | failure | rejected
+        'exit_code' => $exit,
+        'args' => $args,
+        'stdout' => substr($stdout, 0, 20000),
+        'stderr' => substr($stderr, 0, 20000),
+    ];
+    @file_put_contents($path, json_encode($entry, JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND | LOCK_EX);
+}
+
+/** Return the last $limit action-log entries, newest first. */
+function action_log_tail(int $limit = 50): array
+{
+    $path = panel_config()['ACTION_LOG'] ?: '/var/log/wsa-panel/actions.log';
+    if (!is_readable($path)) {
+        return [];
+    }
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) {
+        return [];
+    }
+    $out = [];
+    foreach (array_reverse($lines) as $line) {
+        $entry = json_decode($line, true);
+        if (is_array($entry)) {
+            $out[] = $entry;
+        }
+        if (count($out) >= $limit) {
+            break;
+        }
+    }
+    return $out;
 }
 
 /**

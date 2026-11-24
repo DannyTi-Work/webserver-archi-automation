@@ -141,11 +141,22 @@ for f in bootstrap.php index.php actions.php; do
 done
 # Tell the copied PHP files where the real checkout lives (config, scripts).
 local_cfg="$(mktemp)"
-printf '<?php\ndefine("WSA_REPO_ROOT", "%s");\ndefine("WSA_PANEL_DOMAIN", "%s");\ndefine("WSA_PANEL_PORT", "%s");\ndefine("WSA_ADMIN_PATH", "%s");\n' \
-  "$REPO_ROOT" "$PANEL_DOMAIN" "$PANEL_PORT" "$ADMIN_PATH" > "$local_cfg"
+ACTION_LOG="$(conf ACTION_LOG || printf '/var/log/wsa-panel/actions.log')"
+printf '<?php\ndefine("WSA_REPO_ROOT", "%s");\ndefine("WSA_PANEL_DOMAIN", "%s");\ndefine("WSA_PANEL_PORT", "%s");\ndefine("WSA_ADMIN_PATH", "%s");\ndefine("WSA_ACTION_LOG", "%s");\n' \
+  "$REPO_ROOT" "$PANEL_DOMAIN" "$PANEL_PORT" "$ADMIN_PATH" "$ACTION_LOG" > "$local_cfg"
 run_root install -o root -g www-data -m 0640 "$local_cfg" "${PANEL_PHP_DIR}/config.local.php"
 rm -f "$local_cfg"
-info "panel PHP installed at $PANEL_PHP_DIR"
+
+# Action log: directory writable by www-data so PHP can append successes and
+# failures. Keep an existing log on re-runs (do not truncate history).
+run_root install -d -o root -g www-data -m 0750 "$(dirname -- "$ACTION_LOG")"
+if run_root test -e "$ACTION_LOG"; then
+  run_root chown root:www-data "$ACTION_LOG"
+  run_root chmod 0660 "$ACTION_LOG"   # group must be writable: PHP-FPM appends as www-data
+else
+  run_root install -o root -g www-data -m 0660 /dev/null "$ACTION_LOG"
+fi
+info "panel PHP installed at $PANEL_PHP_DIR (action log: $ACTION_LOG)"
 
 # ---------------------------------------------------------------------------
 # 4. Basic Auth (bcrypt) — keep an existing password on re-runs

@@ -36,6 +36,7 @@ if ($action === '' && isset($input['action'])) {
 
 $token = $input['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? null);
 if (!csrf_valid($token)) {
+    action_log($action, 'rejected', 403, '{}', '', 'invalid CSRF token');
     json_response(['ok' => false, 'error' => 'invalid CSRF token'], 403);
 }
 
@@ -49,9 +50,16 @@ $need_domain = static function (string $value): void {
     }
 };
 
-/** Translate run_privileged()'s tuple into the panel's JSON shape. */
-$respond = static function (array $result): void {
+/** Translate run_privileged()'s tuple into the panel's JSON shape and persist it. */
+$respond = static function (array $result) use ($action, $input): void {
     [$exit, $stdout, $stderr] = $result;
+    // Persist EVERY outcome — success and failure alike — for panel inspection.
+    $args = json_encode([
+        'domain' => $input['domain'] ?? '',
+        'app' => $input['app'] ?? '',
+        'staging' => !empty($input['staging']),
+    ], JSON_UNESCAPED_SLASHES);
+    action_log($action, $exit === 0 ? 'success' : 'failure', $exit, $args ?: '{}', $stdout, $stderr);
     json_response([
         'ok' => $exit === 0,
         'exit_code' => $exit,

@@ -8,6 +8,7 @@ require_once __DIR__ . '/bootstrap.php';
 
 $cfg = panel_config();
 $csrf = csrf_token();
+$recentActions = action_log_tail(30);
 
 $statusResult = run_privileged('status', ['--json'], [], 60);
 $state = null;
@@ -337,6 +338,38 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
     <pre id="result" class="small" style="margin-top:14px">Ready.</pre>
   </div>
 
+  <div class="card">
+    <h2>Recent actions (persisted log)</h2>
+    <?php if (empty($recentActions)): ?>
+      <p class="muted">No actions recorded yet. Successes and failures are both kept in
+        <code><?= e($cfg['ACTION_LOG'] ?? '/var/log/wsa-panel/actions.log') ?></code>.</p>
+    <?php else: ?>
+      <table>
+        <thead><tr><th>Time</th><th>Action</th><th>Outcome</th><th>Exit</th><th>Details</th></tr></thead>
+        <tbody>
+          <?php foreach ($recentActions as $entry): ?>
+            <tr>
+              <td><?= e((string)($entry['ts'] ?? '')) ?></td>
+              <td><?= e((string)($entry['action'] ?? '')) ?></td>
+              <td class="<?= (($entry['outcome'] ?? '') === 'success') ? 'ok' : 'error' ?>">
+                <?= e((string)($entry['outcome'] ?? '')) ?>
+              </td>
+              <td><?= e((string)($entry['exit_code'] ?? '')) ?></td>
+              <td>
+                <span class="small"><?= e(substr((string)($entry['args'] ?? ''), 0, 120)) ?></span>
+                <?php if (!empty($entry['stderr'])): ?>
+                  <br><span class="error small"><?= e(substr((string)$entry['stderr'], 0, 160)) ?></span>
+                <?php elseif (!empty($entry['stdout'])): ?>
+                  <br><span class="small"><?= e(substr((string)$entry['stdout'], 0, 160)) ?></span>
+                <?php endif; ?>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    <?php endif; ?>
+  </div>
+
   <script>
     const TOKEN = <?= json_encode($csrf, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
     const out = document.getElementById('result');
@@ -353,8 +386,10 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         const data = await res.json();
         const head = data.ok ? 'OK' : 'FAILED (exit ' + data.exit_code + ')';
         out.textContent = head + '\n' + (data.error_message || '') +
-          (data.output || '') + (data.error || '');
-        if (data.ok) setTimeout(() => location.reload(), 1500);
+          (data.output || '') + (data.error || '') +
+          '\n(log saved — see Recent actions below)';
+        // No auto-reload: keep both success and failure output visible.
+        // State refreshes only when the user reloads the page.
       } catch (err) {
         out.textContent = 'Request failed: ' + err;
       }
