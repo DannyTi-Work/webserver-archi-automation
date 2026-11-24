@@ -96,9 +96,59 @@ elif [[ -f "$renew_conf" ]]; then
     stale_reason="staging pass requested — replacing any existing certificate"
   fi
 fi
+
+# Other vhosts can reuse this certificate — notably the Phase 8 panel vhost
+# on :8083. `certbot delete` removes the cert files but leaves their SSL
+# directives behind, so `nginx -t` would fail before a replacement can be
+# issued. Move those vhosts out of nginx's config tree for the duration of the
+# swap; the EXIT trap puts them back even if issuance fails. The domain's own
+# vhost is excluded because it is restored from the template below.
+cert_swap_dir=""
+cert_swap_restored=0
+
+swap_borrowed_vhosts() {
+  local cfg base saved idx=0 resolved_cfg resolved_own
+  for cfg in /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*.conf \
+             /etc/nginx/sites-available/*.conf; do
+    [[ -f "$cfg" || -L "$cfg" ]] || continue
+    grep -qF "/etc/letsencrypt/live/${domain}/" "$cfg" 2>/dev/null || continue
+    resolved_cfg="$(readlink -f -- "$cfg" 2>/dev/null || printf '%s' "$cfg")"
+    resolved_own="$(readlink -f -- "$vhost_conf" 2>/dev/null || printf '%s' "$vhost_conf")"
+    [[ "$resolved_cfg" == "$resolved_own" ]] && continue
+    if [[ -z "$cert_swap_dir" ]]; then
+      cert_swap_dir="$(mktemp -d /tmp/wsa-tls-cert-swap.XXXXXX)"
+    fi
+    base="$(basename -- "$cfg")"
+    saved="${cert_swap_dir}/${idx}-${base}"
+    printf '%s' "$cfg" > "${saved}.path"
+    run_root mv -f -- "$cfg" "$saved"
+    info "temporarily disabled vhost reusing the cert: $cfg"
+    idx=$((idx + 1))
+  done
+}
+
+restore_borrowed_vhosts() {
+  (( cert_swap_restored )) && return 0
+  cert_swap_restored=1
+  [[ -n "$cert_swap_dir" && -d "$cert_swap_dir" ]] || return 0
+  local saved target
+  for saved in "${cert_swap_dir}"/*; do
+    [[ -f "$saved" && "$saved" != *.path ]] || continue
+    target="$(cat -- "${saved}.path" 2>/dev/null || true)"
+    [[ -n "$target" ]] || continue
+    run_root mkdir -p -- "$(dirname -- "$target")"
+    run_root mv -f -- "$saved" "$target"
+    rm -f -- "${saved}.path"
+    info "restored vhost reusing the cert: $target"
+  done
+  rmdir -- "$cert_swap_dir" 2>/dev/null || true
+}
+trap restore_borrowed_vhosts EXIT
+
 if [[ -n "$stale_reason" ]]; then
   info "removing existing cert ($stale_reason)"
   run_root certbot delete --cert-name "$domain" --non-interactive >/dev/null 2>&1 || true
+  swap_borrowed_vhosts
 
   # certbot's --nginx plugin leaves SSL directives in the vhost pointing at
   # the deleted cert. Restore a clean HTTP-only vhost from the template first.
@@ -106,8 +156,15 @@ if [[ -n "$stale_reason" ]]; then
   [[ -f "$tpl" ]] || tpl="${REPO_ROOT}/templates/nginx-vhost.conf.tpl"
   fpm_socket="$(ls /run/php/php*-fpm.sock 2>/dev/null | head -1 || true)"
   if [[ -n "$fpm_socket" && -f "$tpl" ]]; then
+    # Match add-domain.sh: include www.<domain> only when it resolves here,
+    # otherwise the placeholder would be written literally into server_name
+    # and status.sh would report "__SERVER_NAMES__" as a bogus domain.
+    server_names="${domain}"
+    www_ip="$(dig +short A "www.${domain}" @8.8.8.8 2>/dev/null | head -1 || true)"
+    [[ -n "$www_ip" ]] && server_names="${domain} www.${domain}"
     clean_tmp="$(mktemp)"
     sed -e "s|__DOMAIN__|${domain}|g" \
+        -e "s|__SERVER_NAMES__|${server_names}|g" \
         -e "s|__DOCROOT__|/var/www/${domain}/public_html|g" \
         -e "s|__PHP_SOCKET__|${fpm_socket}|g" \
         "$tpl" > "$clean_tmp"
@@ -165,6 +222,10 @@ else
     "${email_arg[@]}" "${staging_args[@]}" \
     "${domain_args[@]}"
 fi
+
+# The replacement cert now exists — put back any vhosts that were moved aside
+# so they are covered by the post-certbot config test and reload below.
+restore_borrowed_vhosts
 
 # 5. Gate nginx config after certbot, then conditional reload.
 config_test "nginx (post-certbot)" nginx -t
