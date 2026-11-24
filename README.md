@@ -6,7 +6,7 @@
 
 ## Summary
 
-Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains. Each domain gets its own docroot, logs and MariaDB database/user, with Let's Encrypt TLS. Everything runs through guarded bash scripts: `preflight.sh` checks requirements before anything changes, `setup.sh` installs the base stack, `add-domain.sh` / `tls.sh` / `remove-domain.sh` manage domains, `tests/smoke.sh` verifies the result, and `install.sh` runs the whole flow in one command. The full plan is in `PLAN.md`.
+Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains. Each domain gets its own docroot, logs and MariaDB database/user, with Let's Encrypt TLS. Every action is an independent module: `preflight.sh` checks requirements before anything changes, `setup.sh` installs the base stack, `add-domain.sh` / `tls.sh` / `remove-domain.sh` manage domains, `prepare-wordpress.sh` provisions the shared WordPress template, `status.sh` reports state as JSON, and `tests/smoke.sh` verifies the result. The full plan is in `PLAN.md`.
 
 - **Full usage guide:** [`docs/USAGE.md`](docs/USAGE.md)
 - **Guided end-to-end test:** `bash tests/manual-test.sh [domain] [--app wordpress|static]`
@@ -86,31 +86,40 @@ Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains.
    +-------------------------------------------------------------------+
 ```
 
-### Installer flow (`bash scripts/install.sh [domain...] [--smoke]`)
+### Actions (independent modules)
 
 ```text
         +--------------------------------+
-        | 1. preflight_check base        |  OS/arch, pkg mgr, panels,
-        +---------------+----------------+  ports 80/443, resources
-                        | pass (fail -> stop; nothing changed)
-                        v
+        | preflight.sh [base|domain|tls] |  OS/arch, pkg mgr, panels,
+        +-------------------+------------+  DNS, ports, LE reachability
+                            | (read-only; fail -> nothing changes)
+                            v
         +--------------------------------+
-        | 2. setup.sh                   |  apt, UFW, chrony, nginx,
-        +---------------+----------------+  MariaDB, PHP-FPM (gated reloads)
-                        | for each domain
-                        v
+        | setup.sh                      |  apt, UFW, chrony, nginx,
+        +-------------------+------------+  MariaDB, PHP-FPM (gated reloads)
+                            | one-time, idempotent
+                            v
         +--------------------------------+
-        | 3. add-domain.sh <domain>      |  docroot, marker, logs, vhost,
-        +---------------+----------------+  dedicated DB + user, nginx -t
-                        v
+        | prepare-wordpress.sh [--update]|  shared WP template (once)
+        +-------------------+------------+
+                            |
+            +---------------+---------------+
+            v               v               v
+    +---------------+ +-------------+ +------------------+
+    | add-domain.sh | | tls.sh      | | remove-domain.sh |
+    | -app wordpress| | staging/prod| | confirm + drop   |
+    +-------+-------+ +------+------+ +---------+--------+
+            |                |                  |
+            +--------+-------+------------------+
+                     v
         +--------------------------------+
-        | 4. tls.sh <domain>             |  certbot staging (LE_STAGING=1)
-        +---------------+----------------+  -> production, renew dry-run
-                        | --smoke
-                        v
+        | tests/smoke.sh [domain ...]   |  HTTPS 200, marker/WP, PHP, DB,
+        +--------------------------------+  redirect
+                     |
+                     v
         +--------------------------------+
-        | 5. tests/smoke.sh              |  HTTPS 200, marker, PHP, DB,
-        +--------------------------------+  renewal timer
+        | status.sh [--json]            |  inventory: app, DB, cert, logs
+        +--------------------------------+
 ```
 
 ### Domain lifecycle
@@ -134,11 +143,11 @@ Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains.
 ### Safety / test loop
 
 ```text
-   snapshot --> preflight --> install --> smoke --> reset from snapshot
-                   |            |          |
-              fail-fast    gated reloads   no duplicate
-              (no mutation) nginx -t /     vhosts/DB/users
-                           php-fpm -t
+   snapshot --> preflight --> setup --> add-domain --> tls --> smoke --> reset
+                   |            |           |            |        |
+              fail-fast    gated reloads  no duplicate  renew check  verified
+              (no mutation) nginx -t /    vhosts/DB/    dry-run      state
+                           php-fpm -t     users
 ```
 
 ## Prerequisites
@@ -151,48 +160,53 @@ Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains.
 
 ## Quick protocols
 
-All commands below run on the VPS, from the repo directory.
+All commands below run on the VPS, from the repo directory. Each action is a separate module — run only what you need.
 
-### One command (default)
+### Build the stack (once)
 
 ```bash
-# Base LEMP + one or more domains + TLS + optional smoke, all in one go
-bash scripts/install.sh example.com --smoke
-
-# From config/domains.conf instead of CLI args (no domain argument)
-bash scripts/install.sh --smoke
-
-# Staging cert first, then production (per domain)
-LE_STAGING=1 bash scripts/install.sh example.com --smoke
-
-# Provision a WordPress site instead of the static marker page
-bash scripts/prepare-wordpress.sh                       # once: download shared template
-bash scripts/add-domain.sh example.com --app wordpress  # copy template + wp-config.php
-bash scripts/install.sh example.com --app wordpress --smoke
+bash scripts/preflight.sh        # check requirements first (read-only)
+bash scripts/setup.sh            # base + LEMP
 ```
 
-### Step by step (same flow, manually)
+### Add a domain
 
 ```bash
-# 0. Check requirements first (OS, package manager, control panel, conflicts)
-bash scripts/preflight.sh
+bash scripts/add-domain.sh example.com                      # static site
+bash scripts/add-domain.sh blog.example.com --app wordpress # WordPress site
 
-# 1. Fresh VPS: install base + LEMP
-bash scripts/setup.sh
+# batch: one entry per line in config/domains.conf, then no arguments
+bash scripts/add-domain.sh
+```
 
-# 2. Add and secure a domain
-bash scripts/add-domain.sh example.com
-LE_STAGING=1 bash scripts/tls.sh example.com   # first pass: staging
+### Secure it with TLS
+
+```bash
+LE_STAGING=1 bash scripts/tls.sh example.com   # staging first
 bash scripts/tls.sh example.com                # then production
+bash scripts/tls.sh --renew-dry-run            # renewal check
+```
 
-# 3. Verify everything
-bash tests/smoke.sh example.com
+### Verify and inspect
 
-# 4. Renewal check
-bash scripts/tls.sh --renew-dry-run
+```bash
+bash tests/smoke.sh example.com        # full check for one domain
+bash tests/smoke.sh                    # all domains from config/domains.conf
+bash scripts/status.sh                 # human-readable inventory
+bash scripts/status.sh --json          # JSON inventory for the panel
+```
 
-# 5. Remove a domain
+### Remove a domain
+
+```bash
 bash scripts/remove-domain.sh example.com
+```
+
+### WordPress template
+
+```bash
+bash scripts/prepare-wordpress.sh          # download once
+bash scripts/prepare-wordpress.sh --update # refresh template (new sites only)
 ```
 
 Secrets live in `<repo_dir>/.env` — the root of whichever checkout you run the scripts from (e.g. `/root/webserver-archi-automation/.env` after a `git clone`). Copy `config/.env.example` to `.env` (or `config/.env`), set mode `600`, and never commit it. `.env` is gitignored, so `git pull` does not carry it — copy it into a new checkout before replacing an old one.
@@ -236,6 +250,15 @@ bash scripts/add-domain.sh example.com --app wordpress
 `add-domain.sh` copies the template into the docroot and generates `wp-config.php` from that domain's database credentials, with per-domain salts and table prefix. Existing site content is never overwritten on re-run. In `config/domains.conf` batch mode, use `example.com|wordpress` per line (plain `example.com` stays static). Updating the shared template affects only **new** domains — existing sites update via wp-admin / wp-cli.
 
 The web admin panel (Phase 8) exposes this as a **Deploy WordPress** action.
+
+### Web admin panel
+
+```bash
+bash scripts/setup-panel.sh      # install panel vhost (:8083), auth, sudoers, UFW, renewal hook
+bash scripts/uninstall-panel.sh  # remove panel only — sites, certs and stack stay intact
+```
+
+The panel is served on port **8083** with basic auth. Its dashboard uses `status.sh --json` to list domains (app type, DB/user, cert expiry, logs), and its actions call the same guarded scripts through a sudoers drop-in limited to those script paths. CSRF tokens protect POST actions; see `config/panel.conf.example` for the admin path and credentials.
 
 ### Path to LAMP
 

@@ -77,7 +77,8 @@ step "1. Environment"
 # ---------------------------------------------------------------------------
 check "running as root" test "$(id -u)" = 0
 for f in scripts/preflight.sh scripts/setup.sh scripts/add-domain.sh scripts/tls.sh \
-         scripts/remove-domain.sh scripts/install.sh tests/smoke.sh \
+         scripts/remove-domain.sh scripts/status.sh scripts/prepare-wordpress.sh \
+         tests/smoke.sh \
          templates/nginx-vhost.conf.tpl; do
   check "present: $f" test -f "${REPO_ROOT}/$f"
 done

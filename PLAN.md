@@ -193,7 +193,7 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 - [x] With `--app wordpress`: copy shared template into docroot, render `wp-config.php` from the domain's DB/user/password, generate per-domain salts + unique table prefix, `chown www-data`
 - [x] vhost + DB/user + `nginx -t` gate continue exactly as in Phase 3
 - [x] `config/domains.conf` accepts optional `domain|app` second field (plain `domain` still valid)
-- [x] `scripts/install.sh` passes `--app` through to `add-domain.sh`; batch mode reads the app field
+- [x] each action stays a standalone module — no central orchestrator; the step-by-step protocol chains them manually
 - [x] `tests/smoke.sh` becomes app-aware: detect `wp-config.php`; for WordPress check `wp-login.php` 200 + WordPress signature, DB via `wp db check` if wp-cli exists (else WARN); static sites keep marker checks
 - [x] Idempotency: skip if WordPress already present; never overwrite existing site content
 
@@ -238,46 +238,23 @@ bash scripts/remove-domain.sh example.com
 
 ---
 
-## One-command installer — `scripts/install.sh`
+## Action modules (no central orchestrator)
 
-Single entry point that runs the whole flow in one command, replacing the quick-protocol sequence.
+There is deliberately **no** one-command installer. Every action is an independent module with its own preflight gate and idempotency guard, chained manually through the Quick protocols above:
 
-### Command
+| Module | Action |
+| --- | --- |
+| `scripts/preflight.sh` | read-only requirement checks |
+| `scripts/setup.sh` | base + LEMP (one-time) |
+| `scripts/prepare-wordpress.sh` | shared WordPress template (one-time) |
+| `scripts/add-domain.sh` | vhost + docroot + DB/user + app content |
+| `scripts/tls.sh` | staging → production cert, renewal check |
+| `scripts/remove-domain.sh` | full domain teardown behind confirmation |
+| `scripts/status.sh` | domain inventory (human / JSON) |
+| `tests/smoke.sh` | end-to-end verification |
+| `scripts/panel/*`, `setup-panel.sh`, `uninstall-panel.sh` | optional web UI |
 
-```bash
-bash scripts/install.sh [domain...] [--smoke] [--app wordpress|static]
-```
-
-- Zero or more `domain` arguments. With none, it falls back to `config/domains.conf` — the same optional batch list `add-domain.sh` reads (`domain` or `domain|app`).
-- `--smoke` runs `tests/smoke.sh` at the end.
-- `--app wordpress|static` is passed through to `add-domain.sh` (default `static`); see Phase 7.
-- `LE_STAGING=1 bash scripts/install.sh ...` forwards the staging toggle to `tls.sh` per domain, same as `LE_STAGING=1 bash scripts/tls.sh ...`.
-
-The installer is executed on the VPS: `bash scripts/install.sh example.com` runs from the VPS terminal. There is no SSH orchestration from the client.
-
-### Behavior
-
-1. `preflight_check base` — nothing mutates the system until preflight passes.
-2. `scripts/setup.sh` — base + LEMP (Phase 2).
-3. `scripts/add-domain.sh <domain>` per domain (Phase 3).
-4. `scripts/tls.sh <domain>` per domain (Phase 4).
-5. `tests/smoke.sh` when `--smoke` is passed (Phase 5).
-
-### Rules
-
-- Exit non-zero and stop on the first failing step. The underlying scripts are already guarded (preflight + idempotency), so rerunning the installer is safe and skips everything that already exists.
-- No new dependencies: the installer only sequences existing scripts and shares helpers via `lib/common.sh`.
-- Update the Quick protocols section to show the one-command flow as the default path.
-
-### Acceptance
-
-- On a fresh VPS, `bash scripts/install.sh example.com` reaches the same end state the Phase 0 manual baseline defines (nginx serving the domain marker, PHP executing, DB reachable from PHP, renewal timer active).
-- Rerunning `bash scripts/install.sh example.com` is a no-op apart from config tests — idempotency inherited from `setup.sh`, `add-domain.sh` and `tls.sh`.
-
-### Tasks
-
-- [x] `scripts/install.sh` — one-command installer (behavior and rules above)
-- [x] README quick protocols — show `bash scripts/install.sh example.com` as the one-command path
+Benefits: each step can be run alone, failures are isolated, and adding an action never changes the others. The cost is that multi-domain setup requires running the domain modules per domain (or via `config/domains.conf` batch mode in `add-domain.sh`).
 
 ---
 
@@ -290,7 +267,7 @@ The installer is executed on the VPS: `bash scripts/install.sh example.com` runs
 - **Snapshot/reset procedure** — depends on the VPS provider; document the exact steps once known.
 - **PHP-FPM isolation** — phase 1 uses a shared pool; per-domain pools + unix users are a follow-up if stronger isolation is needed.
 - **Shared WordPress template** — updating the shared template affects only **new** domains; existing sites update via wp-admin / wp-cli.
-- **Execution context** — all scripts, including the installer, run on the VPS itself. No client-side SSH wrapper or remote-install path is planned. Running the scripts on the dev machine (e.g. CachyOS) will correctly fail preflight at the OS / package-manager checks.
+- **Execution context** — every action module runs on the VPS itself. No client-side SSH wrapper or remote-install path is planned. Running the scripts on the dev machine (e.g. CachyOS) will correctly fail preflight at the OS / package-manager checks.
 
 ---
 
@@ -314,7 +291,6 @@ webserver-archi-automation/
 │   ├── setup.sh                # base + LEMP
 │   ├── add-domain.sh           # vhost + DB + marker (--app wordpress|static)
 │   ├── tls.sh                  # certbot per domain + renewal
-│   ├── install.sh              # one-command installer (setup + add-domain + tls, --app passthrough)
 │   ├── prepare-wordpress.sh    # one-time shared WordPress template download
 │   ├── status.sh               # machine-readable state dump (panel, smoke)
 │   ├── setup-panel.sh          # install panel vhost, auth, sudoers, UFW, renewal hook

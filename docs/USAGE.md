@@ -38,7 +38,7 @@ Domains are added and removed on top of it.
 | Check renewal works | `bash scripts/tls.sh --renew-dry-run` |
 | Verify a site | `bash tests/smoke.sh example.com` |
 | Remove a site | `bash scripts/remove-domain.sh example.com` |
-| Do everything at once | `bash scripts/install.sh example.com --smoke` |
+| Inspect all domains (JSON) | `bash scripts/status.sh --json` |
 
 ## Before you start
 
@@ -48,26 +48,24 @@ Domains are added and removed on top of it.
 2. **Root.** All mutating scripts need root or passwordless sudo.
 3. **Ports 22/80/443** open at the cloud provider (UFW is handled by `setup.sh`).
 
-## First install, one command
+## First install (modules, in order)
+
+Every action is an independent module — run them one at a time, from `<repo_dir>`
+(e.g. `/root/webserver-archi-automation`, any clone location):
 
 ```bash
-cd <repo_dir>            # e.g. /root/webserver-archi-automation (any clone location)
-bash scripts/install.sh example.com --smoke
-```
-
-Runs preflight → setup → add-domain → tls → smoke and stops at the first failure.
-Re-running is safe: everything already present is skipped.
-
-## Step by step
-
-```bash
+cd <repo_dir>
 bash scripts/preflight.sh                       # read-only, expect 0 failures
-bash scripts/setup.sh                           # install / verify LEMP
+bash scripts/setup.sh                           # install / verify LEMP (once)
 bash scripts/add-domain.sh example.com          # vhost + DB + user + marker
 LE_STAGING=1 bash scripts/tls.sh example.com    # staging certificate first
 bash scripts/tls.sh example.com                 # then production
-bash tests/smoke.sh example.com
+bash tests/smoke.sh example.com                 # verify complete
 ```
+
+There is no single "install everything" command by design — each module has its own
+preflight gate and idempotency guard, so failures stay isolated and actions can be
+run independently.
 
 ## Adding sites
 
@@ -95,8 +93,8 @@ blog.example.com|wordpress
 ```
 
 ```bash
-bash scripts/add-domain.sh
-bash scripts/install.sh --smoke
+bash scripts/add-domain.sh          # provisions every listed domain
+bash scripts/preflight.sh domain example.com   # check one domain before adding it
 ```
 
 ## Verifying
