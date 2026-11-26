@@ -452,12 +452,19 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
                 <?= e((string)($entry['outcome'] ?? '')) ?>
               </td>
               <td><?= e((string)($entry['exit_code'] ?? '')) ?></td>
+              <?php
+              // Certbot and `nginx -t` write informational lines to stderr even
+              // on success, so stderr alone must not make a row look failed.
+              // Show stdout first for successes, stderr first for failures.
+              $failed = (($entry['outcome'] ?? '') !== 'success');
+              $detail = $failed
+                ? ((string)($entry['stderr'] ?? '') ?: (string)($entry['stdout'] ?? ''))
+                : ((string)($entry['stdout'] ?? '') ?: (string)($entry['stderr'] ?? ''));
+              ?>
               <td>
                 <span class="small"><?= e(substr((string)($entry['args'] ?? ''), 0, 120)) ?></span>
-                <?php if (!empty($entry['stderr'])): ?>
-                  <br><span class="error small"><?= e(substr((string)$entry['stderr'], 0, 160)) ?></span>
-                <?php elseif (!empty($entry['stdout'])): ?>
-                  <br><span class="small"><?= e(substr((string)$entry['stdout'], 0, 160)) ?></span>
+                <?php if ($detail !== ''): ?>
+                  <br><span class="<?= $failed ? 'error small' : 'small' ?>"><?= e(substr($detail, 0, 160)) ?></span>
                 <?php endif; ?>
               </td>
             </tr>
