@@ -331,7 +331,6 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
       <form data-action="renew"><button>Renew dry-run</button></form>
       <form data-action="remove">
         <label>Domain <input name="domain" required placeholder="example.com"></label>
-        <label>Confirm: type the domain <input name="confirm" required></label>
         <button>Remove domain</button>
       </form>
     </div>

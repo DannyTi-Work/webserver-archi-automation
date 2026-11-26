@@ -101,9 +101,6 @@ switch ($action) {
 
     case 'remove':
         $need_domain($domain);
-        if (($input['confirm'] ?? '') !== $domain) {
-            json_response(['ok' => false, 'error' => 'type the domain name to confirm removal'], 400);
-        }
         $respond(run_privileged('remove', [$domain, '--yes']));
         break;
 
