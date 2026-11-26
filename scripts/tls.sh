@@ -5,6 +5,9 @@
 #   LE_STAGING=1 bash scripts/tls.sh <domain>    # staging cert first
 #   bash scripts/tls.sh --renew-dry-run          # quick renewal check
 #
+# `tls.sh <domain>` scopes its post-issue dry-run to that one lineage with
+# --cert-name; only the explicit --renew-dry-run mode checks all domains.
+#
 # Renewal dry-runs pass --no-random-sleep-on-renew (certbot 2.x): otherwise
 # certbot inserts a hidden 1-480s random delay per lineage, which makes a
 # panel action time out even when the renewal itself succeeds.
@@ -242,9 +245,12 @@ else
   info "staging cert: skipping strict HTTP-redirect assertion"
 fi
 
-# 7. Renewal dry-run.
-log "-- renewal dry-run --"
-run_root certbot renew --no-random-sleep-on-renew --dry-run
+# 7. Renewal dry-run — scoped to THIS certificate only. A bare `certbot renew`
+# walks every lineage on the VPS (other sites and the reused panel cert), which
+# is not what "add TLS for <domain>" should do. Use the explicit
+# `--renew-dry-run` mode when an all-domain renewal check is actually wanted.
+log "-- renewal dry-run (this certificate only) --"
+run_root certbot renew --cert-name "$domain" --no-random-sleep-on-renew --dry-run
 
 # 8. Renewal timer.
 log "-- renewal timer --"

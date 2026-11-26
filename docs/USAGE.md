@@ -122,7 +122,9 @@ curl -sSI https://example.com/    # headers
 - `LE_STAGING=1` issues an untrusted staging certificate; browsers warn, but it does
   not consume production rate limits. Do staging first.
 - The production run detects a staging certificate and replaces it.
-- Renewal is automatic (`certbot.timer`); verify with `bash scripts/tls.sh --renew-dry-run`.
+- Renewal is automatic (`certbot.timer`). `tls.sh <domain>` only issues/deploys that
+  domain's cert and runs a dry-run scoped to that certificate (`--cert-name`). To
+  check every certificate on the VPS, use `bash scripts/tls.sh --renew-dry-run`.
 
 ## Removing a site
 

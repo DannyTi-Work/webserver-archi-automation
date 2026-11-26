@@ -233,7 +233,7 @@ Re-running it on an already-removed domain is a no-op.
 - Use `LE_STAGING=1 bash scripts/tls.sh <domain>` for the first pass. Staging certs are untrusted by browsers but do not count against production rate limits.
 - Only flip to production once staging is green. The script reissues automatically if it detects a staging cert.
 - `www.<domain>` is included only if it resolves to the VPS.
-- Renewal is handled by `certbot.timer`; verify with `bash scripts/tls.sh --renew-dry-run`.
+- Renewal is handled by `certbot.timer`. `tls.sh <domain>` touches only that domain's certificate (its dry-run is scoped with `--cert-name`); verify all certificates with `bash scripts/tls.sh --renew-dry-run`.
 
 ### WordPress sites
 
