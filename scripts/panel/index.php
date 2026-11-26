@@ -206,6 +206,21 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
       border: 1px solid var(--line);
     }
 
+    .button-small {
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+
+    .row-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .row-actions form {
+      margin: 0;
+    }
+
     label {
       display: flex;
       flex-direction: column;
@@ -310,11 +325,6 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         <p class="small">Download or refresh the shared template in <code>/var/lib/wsa/wordpress</code>. Does not create a site.</p>
         <button class="button-quiet">Fetch WordPress package</button>
       </form>
-      <form class="action" data-action="renew">
-        <h3>Renew dry-run</h3>
-        <p class="small">Check renewal for <em>all</em> certificates on this VPS. Simulates only — issues nothing.</p>
-        <button class="button-quiet">Renew dry-run</button>
-      </form>
     </div>
   </div>
 
@@ -332,6 +342,7 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
             <th>HTTP / HTTPS</th>
             <th>Database</th>
             <th>Docroot / logs</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -368,6 +379,18 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
                   <br><span class="error small">err: <?= e(substr($domain['last_error_log_line'], 0, 120)) ?></span>
                 <?php endif; ?>
               </td>
+              <td>
+                <div class="row-actions">
+                  <form data-action="smoke">
+                    <input type="hidden" name="domain" value="<?= e($domain['domain'] ?? '') ?>">
+                    <button class="button-small">Smoke test</button>
+                  </form>
+                  <form data-action="renew_domain">
+                    <input type="hidden" name="domain" value="<?= e($domain['domain'] ?? '') ?>">
+                    <button class="button-small button-quiet">Renew dry-run</button>
+                  </form>
+                </div>
+              </td>
             </tr>
           <?php endforeach; ?>
         </tbody>
@@ -397,12 +420,6 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         <label>Domain <input name="domain" required placeholder="example.com"></label>
         <label><input type="checkbox" name="staging" value="1"> staging (untrusted test cert)</label>
         <button>Issue TLS</button>
-      </form>
-      <form class="action" data-action="smoke">
-        <h3>Smoke test</h3>
-        <p class="small">Verify HTTPS, PHP, DB and routing. Blank domain checks all configured sites.</p>
-        <label>Domain <input name="domain" placeholder="example.com (blank = all)"></label>
-        <button>Smoke test</button>
       </form>
       <form class="action" data-action="remove">
         <h3>Remove domain</h3>
@@ -497,15 +514,17 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
       }
     }
 
-    document.querySelectorAll('form[data-action]').forEach(function (form) {
-      form.addEventListener('submit', function (ev) {
-        ev.preventDefault();
-        const payload = {};
-        new FormData(form).forEach(function (value, key) {
-          if (key !== 'csrf_token') payload[key] = value;
-        });
-        call(form.dataset.action, payload);
+    // Delegated so buttons inside #domains-card keep working after that card
+    // is replaced by refreshState().
+    document.addEventListener('submit', function (ev) {
+      const form = ev.target.closest('form[data-action]');
+      if (!form) return;
+      ev.preventDefault();
+      const payload = {};
+      new FormData(form).forEach(function (value, key) {
+        if (key !== 'csrf_token') payload[key] = value;
       });
+      call(form.dataset.action, payload);
     });
   </script>
 

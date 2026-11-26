@@ -35,7 +35,7 @@ Domains are added and removed on top of it.
 | Download / refresh the WP template | `bash scripts/prepare-wordpress.sh [--update]` |
 | Enable HTTPS | `bash scripts/tls.sh example.com` |
 | Test HTTPS on staging first | `LE_STAGING=1 bash scripts/tls.sh example.com` |
-| Check renewal works | `bash scripts/tls.sh --renew-dry-run` |
+| Check renewal works | `bash scripts/tls.sh --renew-dry-run [example.com]` (no domain = all certificates) |
 | Verify a site | `bash tests/smoke.sh example.com` |
 | Remove a site | `bash scripts/remove-domain.sh example.com` |
 | Inspect all domains (JSON) | `bash scripts/status.sh --json` |
@@ -123,8 +123,10 @@ curl -sSI https://example.com/    # headers
   not consume production rate limits. Do staging first.
 - The production run detects a staging certificate and replaces it.
 - Renewal is automatic (`certbot.timer`). `tls.sh <domain>` only issues/deploys that
-  domain's cert and runs a dry-run scoped to that certificate (`--cert-name`). To
-  check every certificate on the VPS, use `bash scripts/tls.sh --renew-dry-run`.
+  domain's cert and runs a dry-run scoped to that certificate (`--cert-name`).
+  `bash scripts/tls.sh --renew-dry-run <domain>` checks one certificate; without a
+  domain it checks every certificate on the VPS. The panel's Domains table has a
+  per-domain **Renew dry-run** button and a per-domain **Smoke test** button.
 
 ## Removing a site
 

@@ -3,7 +3,8 @@
 # Usage:
 #   bash scripts/tls.sh <domain>                 # production cert
 #   LE_STAGING=1 bash scripts/tls.sh <domain>    # staging cert first
-#   bash scripts/tls.sh --renew-dry-run          # quick renewal check
+#   bash scripts/tls.sh --renew-dry-run          # renewal check, all certificates
+#   bash scripts/tls.sh --renew-dry-run <domain>  # renewal check, one certificate
 #
 # `tls.sh <domain>` scopes its post-issue dry-run to that one lineage with
 # --cert-name; only the explicit --renew-dry-run mode checks all domains.
@@ -20,13 +21,24 @@ source "${SCRIPT_DIR}/../lib/preflight.sh"
 log "== tls.sh =="
 
 # --renew-dry-run: verify renewal configuration without issuing a new cert.
+# With a domain argument, scope the check to that one lineage; without one,
+# check every certificate on the VPS.
 if [[ "${1:-}" == "--renew-dry-run" ]]; then
   require_root
   if ! command -v certbot >/dev/null 2>&1; then
     fail "certbot is not installed — run tls.sh <domain> first"
   fi
-  log "-- renewal dry-run --"
-  run_root certbot renew --no-random-sleep-on-renew --dry-run
+  renew_target="${2:-}"
+  if [[ -n "$renew_target" ]]; then
+    is_valid_domain "$renew_target" || fail "invalid domain: $renew_target"
+    [[ -f "/etc/letsencrypt/renewal/${renew_target}.conf" ]] || \
+      fail "no certificate for $renew_target — run tls.sh $renew_target first"
+    log "-- renewal dry-run for $renew_target (this certificate only) --"
+    run_root certbot renew --cert-name "$renew_target" --no-random-sleep-on-renew --dry-run
+  else
+    log "-- renewal dry-run (all certificates) --"
+    run_root certbot renew --no-random-sleep-on-renew --dry-run
+  fi
   log "-- renewal timer --"
   if systemctl list-timers --no-pager 2>/dev/null | grep -q certbot.timer; then
     info "certbot.timer is active"
@@ -39,7 +51,7 @@ fi
 
 domain="${1:-}"
 if [[ -z "$domain" ]]; then
-  printf 'usage: bash scripts/tls.sh <domain> | --renew-dry-run\n' >&2
+  printf 'usage: bash scripts/tls.sh <domain> | --renew-dry-run [<domain>]\n' >&2
   exit 2
 fi
 

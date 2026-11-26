@@ -90,6 +90,12 @@ switch ($action) {
         $respond(run_privileged('tls', ['--renew-dry-run'], [], 600));
         break;
 
+    case 'renew_domain':
+        // Per-domain dry-run from the Domains table — only this lineage.
+        $need_domain($domain);
+        $respond(run_privileged('tls', ['--renew-dry-run', $domain], [], 300));
+        break;
+
     case 'smoke':
         $args = [];
         if ($domain !== '') {

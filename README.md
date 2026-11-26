@@ -184,7 +184,8 @@ bash scripts/add-domain.sh
 ```bash
 LE_STAGING=1 bash scripts/tls.sh example.com   # staging first
 bash scripts/tls.sh example.com                # then production
-bash scripts/tls.sh --renew-dry-run            # renewal check
+bash scripts/tls.sh --renew-dry-run            # renewal check, all certificates
+bash scripts/tls.sh --renew-dry-run example.com # renewal check, one certificate
 ```
 
 ### Verify and inspect
