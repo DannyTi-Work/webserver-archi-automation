@@ -130,8 +130,8 @@ for i in "${!domains[@]}"; do
   log ""
   log "-- domain: $domain (app: $dom_app) --"
 
-  # Safety gate — DNS must resolve to this VPS, duplicate check warns.
-  if ! preflight_check domain "$domain"; then
+  # Safety gate — DNS must resolve to this VPS; an existing domain is a hard fail.
+  if ! preflight_check add-domain "$domain"; then
     fail "preflight failed for $domain — no changes made for this domain"
   fi
 

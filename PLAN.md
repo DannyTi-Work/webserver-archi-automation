@@ -30,13 +30,13 @@ bash scripts/preflight.sh
 
 **Profiles:**
 
-| Script                      | Profile  | Checks applied                                                           |
-| --------------------------- | -------- | ------------------------------------------------------------------------ |
-| `preflight.sh`              | `base`   | Execution context, OS, package manager, panel/stack conflicts, resources |
-| `setup.sh`                  | `base`   | Same as above                                                            |
-| `add-domain.sh <domain>`    | `domain` | `base` + domain format, DNS, port availability, duplicate-domain check   |
-| `tls.sh <domain>`           | `tls`    | `domain` + LE reachability, NTP sync                                     |
-| `remove-domain.sh <domain>` | `domain` | Same safety checks before removal                                        |
+| Script                      | Profile      | Checks applied                                                                 |
+| --------------------------- | ------------ | ------------------------------------------------------------------------------ |
+| `preflight.sh`              | `base`       | Execution context, OS, package manager, panel/stack conflicts, resources       |
+| `setup.sh`                  | `base`       | Same as above                                                                  |
+| `add-domain.sh <domain>`    | `add-domain` | `base` + domain format, DNS, ports, duplicate-domain **hard fail**              |
+| `tls.sh <domain>`           | `tls`        | `domain` + LE reachability, NTP sync; duplicate domain only warns              |
+| `remove-domain.sh <domain>` | `domain`     | Same safety checks before removal; duplicate domain only warns                 |
 
 ### 1. Execution context
 - Running as root (or with working `sudo`)
@@ -56,7 +56,7 @@ bash scripts/preflight.sh
 - Detect installed panels by path: cPanel (`/usr/local/cpanel`), Plesk (`/usr/local/psa`), CyberPanel (`/usr/local/CyberPanel`), aaPanel (`/www/server/panel`), Webmin (`/usr/share/webmin`), ISPConfig, Hestia, CloudPanel
 - **If any panel is found → hard fail.** Panels own nginx/Apache/DB config and overwrite generated vhosts. Message must tell the client to use a clean VPS or the panel's own API
 - Detect pre-existing stack packages (`nginx`, `apache2`, `mariadb-server`, `mysql-server`, `php*-fpm`) and listeners on ports 80/443 via `ss -ltnp` → fail or warn, naming the offending process
-- Detect leftovers from a previous run (`/etc/nginx/sites-enabled/*`, `/var/www` marker files) → warn about duplicate-domain risk
+- Detect leftovers from a previous run (`/etc/nginx/sites-enabled/*`, `/etc/nginx/conf.d/<domain>.conf`, `/var/www/<domain>`) → **hard fail** on the `add-domain` profile, warn on `domain`/`tls` (those need an existing domain)
 
 ### 5. Network / TLS prerequisites (domain + TLS profiles)
 - Domain format valid; DNS A/AAAA resolves to the VPS public IP (`dig +short`)
@@ -166,7 +166,7 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
   - [x] PHP executes (not served as plain text)
   - [x] DB connectivity from PHP (small probe script per domain)
   - [ ] Optional: security headers present
-- [x] Idempotency: run `setup.sh` and `add-domain.sh` twice; second run must skip everything (no duplicate vhosts/users/DBs) — verified across repeated runs
+- [x] Idempotency: `setup.sh` is safe to re-run; a second `add-domain.sh` is now **rejected** by the `add-domain` preflight profile (duplicate domain = hard fail), leaving vhosts/users/DBs untouched — verified by `tests/preflight-duplicate-test.sh` and the manual test's duplicate step
 - [x] Preflight failure drill: unsupported OS (CachyOS) and panel present (Hestia) both verified to fail before any change; non-nginx port-occupied path implemented but not simulated
 - [x] Failure injection: break an unrelated nginx config → `add-domain.sh` fails at `nginx -t` (exit 1) and the live site stays 200; also verified TLS-enabled vhosts are preserved on rerun
 - [ ] Full reset-from-snapshot → run → smoke cycle, repeated, to prove the whole flow is reproducible

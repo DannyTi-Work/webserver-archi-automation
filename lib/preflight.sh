@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/preflight.sh — requirement checks run before any script mutates the system.
-# Usage: source this file, then call: preflight_check <base|domain|tls> [domain]
+# Usage: source this file, then call: preflight_check <base|domain|add-domain|tls> [domain]
 # Prints [OK] / [WARN] / [FAIL] lines. Returns 1 if any check failed.
 
 if [[ -n "${_PREFLIGHT_SH_LOADED:-}" ]]; then
@@ -290,14 +290,29 @@ pf_ntp() {
   fi
 }
 
+# Detect artifacts left by a previous add-domain.sh run. The lookup paths are
+# overridable so this check can be unit-tested without touching the system.
+# Mode "fail" is used by the add-domain profile (a duplicate add is an error);
+# the default "warn" keeps tls.sh and remove-domain.sh tolerant of domains
+# that must already exist.
 pf_duplicate_domain() {
   local domain="${1:-}"
+  local mode="${2:-warn}"
   [[ -z "$domain" ]] && return 0
+  local sites_dir="${PF_SITES_ENABLED_DIR:-/etc/nginx/sites-enabled}"
+  local confd_dir="${PF_NGINX_CONFD_DIR:-/etc/nginx/conf.d}"
+  local web_root="${PF_WEB_ROOT:-/var/www}"
   local found=""
-  [[ -L "/etc/nginx/sites-enabled/$domain" ]] && found="${found} nginx site"
-  [[ -e "/var/www/$domain" ]] && found="${found} docroot"
+  [[ -e "${sites_dir}/${domain}" || -L "${sites_dir}/${domain}" ]] && found="${found} nginx site"
+  [[ -e "${sites_dir}/${domain}.conf" || -L "${sites_dir}/${domain}.conf" ]] && found="${found} nginx site"
+  [[ -e "${confd_dir}/${domain}.conf" ]] && found="${found} nginx conf"
+  [[ -e "${web_root}/${domain}" ]] && found="${found} docroot"
   if [[ -n "$found" ]]; then
-    pf_warn "domain $domain already has:${found} — add-domain.sh will skip existing resources"
+    if [[ "$mode" == "fail" ]]; then
+      pf_fail "duplicate domain $domain already has:${found} — refusing to add an existing domain"
+    else
+      pf_warn "domain $domain already has:${found} — existing resources detected"
+    fi
   else
     pf_ok "domain $domain not yet configured"
   fi
@@ -364,18 +379,24 @@ preflight_check() {
       pf_domain_format "$domain"
       pf_domain_dns "$domain"
       pf_ports_client_side
-      pf_duplicate_domain "$domain"
+      pf_duplicate_domain "$domain"        # warn: remove-domain.sh needs the domain to exist
+      ;;
+    add-domain)
+      pf_domain_format "$domain"
+      pf_domain_dns "$domain"
+      pf_ports_client_side
+      pf_duplicate_domain "$domain" fail   # hard fail: never add a domain twice
       ;;
     tls)
       pf_domain_format "$domain"
       pf_domain_dns "$domain"
       pf_ports_client_side
-      pf_duplicate_domain "$domain"
+      pf_duplicate_domain "$domain"        # warn: tls.sh needs the domain to exist
       pf_le_reachability
       pf_ntp
       ;;
     *)
-      pf_fail "unknown preflight profile: $profile (use base, domain, or tls)"
+      pf_fail "unknown preflight profile: $profile (use base, domain, add-domain, or tls)"
       ;;
   esac
 

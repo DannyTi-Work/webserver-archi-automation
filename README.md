@@ -82,16 +82,16 @@ Automates a fresh Ubuntu VPS into a LEMP server that hosts multiple web domains.
    |    [domain format,  [LE reach-    [same safety                    |
    |     DNS, port        ability,      checks before                  |
    |     availability,    NTP sync]     removal]                       |
-   |     duplicate-domain]                                             |
+   |     dup -> hard FAIL]                                             |
    +-------------------------------------------------------------------+
 ```
 
 ### Actions (independent modules)
 
 ```text
-        +--------------------------------+
-        | preflight.sh [base|domain|tls] |  OS/arch, pkg mgr, panels,
-        +-------------------+------------+  DNS, ports, LE reachability
+        +-------------------------------------------+
+        | preflight.sh [base|domain|add-domain|tls] |  OS/arch, pkg mgr, panels,
+        +-------------------+------------------------+  DNS, ports, LE reachability
                             | (read-only; fail -> nothing changes)
                             v
         +--------------------------------+

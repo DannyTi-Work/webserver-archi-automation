@@ -75,6 +75,11 @@ Static (default) — creates a marker page that proves vhost, PHP and DB work:
 bash scripts/add-domain.sh example.com
 ```
 
+> **Duplicate domains fail.** If a vhost or docroot for the domain already
+> exists, preflight's `add-domain` profile rejects it before any change is made.
+> For a domain that already exists, use `tls.sh` for certificates or
+> `remove-domain.sh` for teardown — a second `add-domain.sh` will not update it.
+
 WordPress — copies the shared template and generates `wp-config.php` with that
 domain's credentials, unique salts and table prefix:
 
@@ -94,7 +99,7 @@ blog.example.com|wordpress
 
 ```bash
 bash scripts/add-domain.sh          # provisions every listed domain
-bash scripts/preflight.sh domain example.com   # check one domain before adding it
+bash scripts/preflight.sh add-domain example.com  # check before adding (duplicate = hard fail)
 ```
 
 ## Verifying

@@ -225,13 +225,18 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-step "9. Idempotency (re-run add-domain)"
+step "9. Duplicate domain is rejected (no second add)"
 # ---------------------------------------------------------------------------
 vhost_count_before="$(ls /etc/nginx/conf.d/"${DOMAIN}".conf /etc/nginx/sites-available/"${DOMAIN}".conf 2>/dev/null | wc -l)"
 if ( cd "$REPO_ROOT" && bash scripts/add-domain.sh "$DOMAIN" --app "$APP" >/tmp/mt-rerun.log 2>&1 ); then
-  ok "second add-domain.sh run completed"
+  no "duplicate add-domain.sh run was allowed"
 else
-  no "second add-domain.sh run failed — see /tmp/mt-rerun.log"
+  ok "duplicate add-domain.sh run rejected"
+  if grep -q 'duplicate domain' /tmp/mt-rerun.log; then
+    ok "duplicate-domain error reported"
+  else
+    no "duplicate-domain error missing — see /tmp/mt-rerun.log"
+  fi
 fi
 vhost_count_after="$(ls /etc/nginx/conf.d/"${DOMAIN}".conf /etc/nginx/sites-available/"${DOMAIN}".conf 2>/dev/null | wc -l)"
 check "no duplicate vhost" test "$vhost_count_before" = "$vhost_count_after"
