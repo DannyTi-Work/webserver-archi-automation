@@ -214,6 +214,32 @@ fi
 # Gate nginx config before certbot rewrites it (after any stale cleanup).
 config_test "nginx (pre-certbot)" nginx -t
 
+# Install an EXISTING certificate into a vhost that lost its TLS directives
+# (e.g. after remove-domain + add-domain recreated an HTTP-only vhost). This
+# never re-issues — renewals update the same files and the deploy hook reloads
+# nginx, so no Let's Encrypt quota is consumed just to restore the config.
+deploy_existing_cert() {
+  local tpl fpm tmp server_names
+  tpl="${SCRIPT_DIR}/../templates/nginx-vhost-tls.conf.tpl"
+  [[ -f "$tpl" ]] || tpl="${REPO_ROOT}/templates/nginx-vhost-tls.conf.tpl"
+  [[ -f "$tpl" ]] || fail "TLS vhost template missing: templates/nginx-vhost-tls.conf.tpl"
+  fpm="$(ls /run/php/php*-fpm.sock 2>/dev/null | head -1 || true)"
+  [[ -n "$fpm" ]] || fail "no PHP-FPM socket found — was setup.sh run?"
+  server_names="$domain"
+  [[ " ${domain_args[*]} " == *" -d www.${domain} "* ]] && server_names="${domain} www.${domain}"
+  tmp="$(mktemp)"
+  sed -e "s|__DOMAIN__|${domain}|g" \
+      -e "s|__SERVER_NAMES__|${server_names}|g" \
+      -e "s|__DOCROOT__|/var/www/${domain}/public_html|g" \
+      -e "s|__PHP_SOCKET__|${fpm}|g" \
+      "$tpl" > "$tmp"
+  run_root install -m 0644 "$tmp" "$vhost_conf"
+  rm -f "$tmp"
+  info "installed existing certificate into $vhost_conf (no re-issuance)"
+  config_test "nginx (post-deploy)" nginx -t
+  reload_service nginx
+}
+
 # 4. Issue the certificate. certbot --nginx edits vhosts and reloads nginx.
 log "-- issuing certificate for $domain --"
 # Detect whether the domain's vhost already has certbot's TLS directives.
@@ -226,11 +252,10 @@ if [[ -f "$renew_conf" ]] && (( vhost_has_tls )); then
   # Cert and vhost are both in place — nothing to issue or deploy.
   info "existing certificate is valid and deployed — skipping issuance"
 elif [[ -f "$renew_conf" ]]; then
-  # Valid cert exists but vhost lost its TLS directives (e.g. after
-  # remove-domain + add-domain). Force a renewal so certbot re-deploys it.
-  info "existing certificate is valid but not deployed — re-deploying"
-  run_root certbot --nginx --non-interactive --agree-tos --force-renewal \
-    --cert-name "$domain" "${email_arg[@]}" "${domain_args[@]}"
+  # Valid cert exists but vhost lost its TLS directives — install it instead
+  # of burning a renewal against Let's Encrypt.
+  info "existing certificate is valid but not deployed — installing it"
+  deploy_existing_cert
 else
   run_root certbot --nginx --non-interactive --agree-tos \
     --cert-name "$domain" \

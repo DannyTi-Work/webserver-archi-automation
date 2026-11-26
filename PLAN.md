@@ -147,7 +147,7 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 
 - [x] Call `preflight_check tls` at the top (DNS + LE reachability + NTP)
 - [x] Install certbot + nginx plugin if absent
-- [x] Issue one cert per domain: `certbot --nginx -d <domain> [-d www.<domain>]` (www only when it resolves)
+- [x] Issue one cert per domain: `certbot --nginx -d <domain> [-d www.<domain>]` (www only when it resolves). If a valid cert already exists but the vhost lost its TLS directives (e.g. after remove + add), render `templates/nginx-vhost-tls.conf.tpl` to re-install it **without re-issuing** — no Let's Encrypt quota is consumed and HTTP gets a 301 → HTTPS redirect
 - [x] First passes against the Let's Encrypt **staging endpoint** to avoid production rate limits; toggle with `LE_STAGING=1`
 - [x] Flip to production once staging is green
 - [x] Verify renewal: `certbot renew --dry-run` (all-domain check via `--renew-dry-run`). A per-domain `tls.sh <domain>` run scopes its dry-run to that lineage with `--cert-name` so it never simulates renewal of other domains' certificates
