@@ -36,6 +36,10 @@ Domains are added and removed on top of it.
 | Enable HTTPS | `bash scripts/tls.sh example.com` |
 | Test HTTPS on staging first | `LE_STAGING=1 bash scripts/tls.sh example.com` |
 | Check renewal works | `bash scripts/tls.sh --renew-dry-run [example.com]` (no domain = all certificates) |
+| List managed databases | `bash scripts/databases.sh --json` |
+| Create a standalone DB | `bash scripts/databases.sh create blogdb` |
+| Attach an empty DB to WordPress | `bash scripts/databases.sh attach blogdb blog.example.com` |
+| Delete a managed DB | `bash scripts/databases.sh delete blogdb --yes` |
 | Verify a site | `bash tests/smoke.sh example.com` |
 | Remove a site | `bash scripts/remove-domain.sh example.com` |
 | Inspect all domains (JSON) | `bash scripts/status.sh --json` |
@@ -101,6 +105,24 @@ blog.example.com|wordpress
 bash scripts/add-domain.sh          # provisions every listed domain
 bash scripts/preflight.sh add-domain example.com  # check before adding (duplicate = hard fail)
 ```
+
+## Database management
+
+Databases are managed independently of domains. Each domain still gets its own
+dedicated DB automatically, but you can also create one on its own and connect
+it to WordPress later:
+
+```bash
+bash scripts/databases.sh create blogdb                    # DB + blogdb_u user
+bash scripts/add-domain.sh blog.example.com --app wordpress --db blogdb
+# or, for a site that already exists:
+bash scripts/databases.sh attach blogdb blog.example.com   # rewrites wp-config.php
+bash scripts/databases.sh --json                           # inventory used by the panel
+bash scripts/databases.sh delete blogdb --yes              # refuses while attached
+```
+
+`remove-domain.sh --keep-db` removes the site but keeps its database as a
+managed, unattached one. The panel exposes all of this in its **Databases** tab.
 
 ## Verifying
 

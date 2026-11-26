@@ -27,5 +27,6 @@ www-data ALL=(root) NOPASSWD: \
     /usr/bin/bash __REPO_ROOT__/scripts/remove-domain.sh *, \
     /usr/bin/bash __REPO_ROOT__/scripts/prepare-wordpress.sh, \
     /usr/bin/bash __REPO_ROOT__/scripts/prepare-wordpress.sh *, \
+    /usr/bin/bash __REPO_ROOT__/scripts/databases.sh *, \
     /usr/bin/bash __REPO_ROOT__/tests/smoke.sh, \
     /usr/bin/bash __REPO_ROOT__/tests/smoke.sh *

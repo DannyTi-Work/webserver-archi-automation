@@ -58,6 +58,8 @@ $respond = static function (array $result) use ($action, $input): void {
         'domain' => $input['domain'] ?? '',
         'app' => $input['app'] ?? '',
         'staging' => !empty($input['staging']),
+        'name' => $input['name'] ?? '',
+        'db' => $input['db'] ?? '',
     ], JSON_UNESCAPED_SLASHES);
     action_log($action, $exit === 0 ? 'success' : 'failure', $exit, $args ?: '{}', $stdout, $stderr);
     json_response([
@@ -74,7 +76,17 @@ switch ($action) {
         if (!in_array($app, ['static', 'wordpress'], true)) {
             json_response(['ok' => false, 'error' => 'app must be static or wordpress'], 400);
         }
-        $respond(run_privileged('add', [$domain, '--app', $app]));
+        $args = [$domain, '--app', $app];
+        // Optional: attach an existing managed database instead of creating a
+        // dedicated one (Hestia-style: empty DB + WordPress connect at deploy).
+        $db = trim((string)($input['db'] ?? ''));
+        if ($db !== '') {
+            if (!preg_match('/^[A-Za-z0-9_]{1,60}$/', $db)) {
+                json_response(['ok' => false, 'error' => 'invalid database name'], 400);
+            }
+            array_push($args, '--db', $db);
+        }
+        $respond(run_privileged('add', $args));
         break;
 
     case 'tls':
@@ -108,6 +120,39 @@ switch ($action) {
     case 'remove':
         $need_domain($domain);
         $respond(run_privileged('remove', [$domain, '--yes']));
+        break;
+
+    case 'db_create':
+        $name = trim((string)($input['name'] ?? ''));
+        if (!preg_match('/^[A-Za-z0-9_]{1,60}$/', $name)) {
+            json_response(['ok' => false, 'error' => 'invalid database name'], 400);
+        }
+        $args = ['create', $name];
+        $dbuser = trim((string)($input['dbuser'] ?? ''));
+        if ($dbuser !== '') {
+            if (!preg_match('/^[A-Za-z0-9_]{1,60}$/', $dbuser)) {
+                json_response(['ok' => false, 'error' => 'invalid database user'], 400);
+            }
+            array_push($args, '--user', $dbuser);
+        }
+        $respond(run_privileged('databases', $args));
+        break;
+
+    case 'db_delete':
+        $name = trim((string)($input['name'] ?? ''));
+        if (!preg_match('/^[A-Za-z0-9_]{1,60}$/', $name)) {
+            json_response(['ok' => false, 'error' => 'invalid database name'], 400);
+        }
+        $respond(run_privileged('databases', ['delete', $name, '--yes']));
+        break;
+
+    case 'db_attach':
+        $name = trim((string)($input['name'] ?? ''));
+        $need_domain($domain);
+        if (!preg_match('/^[A-Za-z0-9_]{1,60}$/', $name)) {
+            json_response(['ok' => false, 'error' => 'invalid database name'], 400);
+        }
+        $respond(run_privileged('databases', ['attach', $name, $domain]));
         break;
 
     case 'fetch_wp':

@@ -13,10 +13,12 @@ source "${SCRIPT_DIR}/../lib/preflight.sh"
 # optional flags:
 #   --app wordpress|static (default static)
 #   --db-pass PASSWORD (optional, will generate if not provided)
+#   --db NAME (attach an existing database created by scripts/databases.sh)
 #   -h|--help (show usage)
 domain=""
 app=""
 db_pass=""
+db_name_opt=""
 while (( $# )); do
   case "$1" in
     --app)
@@ -27,8 +29,12 @@ while (( $# )); do
       db_pass="${2:-}"
       shift 2
       ;;
+    --db)
+      db_name_opt="${2:-}"
+      shift 2
+      ;;
     -h|--help)
-      printf 'usage: bash scripts/add-domain.sh <domain> [--app wordpress|static] [--db-pass PASSWORD]\n'
+      printf 'usage: bash scripts/add-domain.sh <domain> [--app wordpress|static] [--db-pass PASSWORD] [--db NAME]\n'
       exit 0
       ;;
     -*)
@@ -138,19 +144,38 @@ for i in "${!domains[@]}"; do
   slug="$(domain_slug "$domain")"
   db="${slug}_db"
   dbuser="${slug}_u"
+  db_env_key="DB_PASS_${slug}"
+  own_db=1
+  db_meta=""
+  if [[ -n "$db_name_opt" ]]; then
+    # Attach an existing database from Database management instead of creating
+    # a dedicated one. Its credentials come from the managed DB's .env entry.
+    db_meta="/var/lib/wsa/databases/${db_name_opt}.meta"
+    [[ -f "$db_meta" ]] || fail "database $db_name_opt is not managed by WSA — create it with scripts/databases.sh first"
+    db="$(grep -m1 '^DB_NAME=' "$db_meta" | cut -d= -f2-)"
+    dbuser="$(grep -m1 '^DB_USER=' "$db_meta" | cut -d= -f2-)"
+    db_env_key="$(grep -m1 '^ENV_KEY=' "$db_meta" | cut -d= -f2-)"
+    [[ -n "$db" && -n "$dbuser" && -n "$db_env_key" ]] || fail "incomplete metadata for database $db_name_opt"
+    own_db=0
+    info "using existing managed database: $db (user $dbuser)"
+  fi
   docroot="/var/www/${domain}/public_html"
   vhost_name="${domain}.conf"
 
   # 1. Resolve the DB password first — the marker file needs it.
-  pass_var="DB_PASS_${slug}"
+  pass_var="$db_env_key"
   if [[ -z "$db_pass" ]]; then
     db_pass="${!pass_var:-}"
   fi
   if [[ -z "$db_pass" ]]; then
-    db_pass="$(gen_password)"
-    set_env_var "DB_PASS_${slug}" "$db_pass"
-    run_root chmod 600 "${REPO_ROOT}/.env"
-    info "generated DB password stored in .env as DB_PASS_${slug}"
+    if (( own_db )); then
+      db_pass="$(gen_password)"
+      set_env_var "$db_env_key" "$db_pass"
+      run_root chmod 600 "${REPO_ROOT}/.env"
+      info "generated DB password stored in .env as $db_env_key"
+    else
+      fail "no password for $db in .env ($db_env_key) — rotate it in Database management"
+    fi
   fi
   db_pass_sql="$(sql_quote "$db_pass")"
   pass_escaped="$(printf '%s' "$db_pass" | sed -e 's/[\\&|]/\\&/g')"
@@ -243,24 +268,44 @@ PHP
     rm -f "$marker_tmp"
   fi
 
-  # 4. Database + least-privilege user.
+  # 4. Database + least-privilege user. With --db, the database already exists
+  #    in Database management — just record that this domain now uses it.
 
-  if ! db_exists "$db"; then
-    run_root mariadb -e "CREATE DATABASE \`${db}\`;"
-    info "database created: $db"
+  run_root install -d -m 0755 /var/lib/wsa/databases
+  if (( own_db )); then
+    if ! db_exists "$db"; then
+      run_root mariadb -e "CREATE DATABASE \`${db}\`;"
+      info "database created: $db"
+    else
+      info "database already exists: $db — skipping"
+    fi
+    if ! db_user_exists "$dbuser"; then
+      run_root mariadb -e "CREATE USER '${dbuser}'@'localhost' IDENTIFIED BY '${db_pass_sql}';"
+      info "database user created: $dbuser"
+    else
+      # Re-assert credential so .env and MariaDB never drift (e.g. .env was lost
+      # and a new password was generated on a re-run).
+      run_root mariadb -e "ALTER USER '${dbuser}'@'localhost' IDENTIFIED BY '${db_pass_sql}';"
+      info "database user exists: $dbuser — password re-asserted"
+    fi
+    run_root mariadb -e "GRANT ALL ON \`${db}\`.* TO '${dbuser}'@'localhost'; FLUSH PRIVILEGES;"
+    meta_tmp="$(mktemp)"
+    printf 'DB_NAME=%s\nDB_USER=%s\nENV_KEY=%s\nATTACHED_TO=%s\n' \
+      "$db" "$dbuser" "$db_env_key" "$domain" > "$meta_tmp"
+    run_root install -o root -g root -m 0644 "$meta_tmp" "/var/lib/wsa/databases/${db}.meta"
+    rm -f "$meta_tmp"
+    info "database $db registered in Database management (attached to $domain)"
   else
-    info "database already exists: $db — skipping"
+    meta_tmp="$(mktemp)"
+    awk -v v="$domain" '
+      index($0, "ATTACHED_TO=") == 1 { print "ATTACHED_TO=" v; done = 1; next }
+      { print }
+      END { if (!done) print "ATTACHED_TO=" v }
+    ' "$db_meta" > "$meta_tmp"
+    run_root install -o root -g root -m 0644 "$meta_tmp" "$db_meta"
+    rm -f "$meta_tmp"
+    info "database $db attached to $domain"
   fi
-  if ! db_user_exists "$dbuser"; then
-    run_root mariadb -e "CREATE USER '${dbuser}'@'localhost' IDENTIFIED BY '${db_pass_sql}';"
-    info "database user created: $dbuser"
-  else
-    # Re-assert credential so .env and MariaDB never drift (e.g. .env was lost
-    # and a new password was generated on a re-run).
-    run_root mariadb -e "ALTER USER '${dbuser}'@'localhost' IDENTIFIED BY '${db_pass_sql}';"
-    info "database user exists: $dbuser — password re-asserted"
-  fi
-  run_root mariadb -e "GRANT ALL ON \`${db}\`.* TO '${dbuser}'@'localhost'; FLUSH PRIVILEGES;"
 
   # 4. nginx vhost from template.
   if [[ -f "${SCRIPT_DIR}/../templates/nginx-vhost.conf.tpl" ]]; then

@@ -188,6 +188,22 @@ bash scripts/tls.sh --renew-dry-run            # renewal check, all certificates
 bash scripts/tls.sh --renew-dry-run example.com # renewal check, one certificate
 ```
 
+### Manage databases
+
+Databases are a separate module. A dedicated DB is still created automatically
+with each domain (non-breaking), but you can also manage databases on their own:
+
+```bash
+bash scripts/databases.sh --json                 # managed DB inventory (panel uses this)
+bash scripts/databases.sh create blogdb          # DB + <name>_u user, password in .env
+bash scripts/databases.sh attach blogdb blog.example.com   # connect an empty DB to WordPress
+bash scripts/databases.sh delete blogdb --yes    # refuses while a domain uses it
+```
+
+An empty DB created here can be connected to WordPress by selecting it in the
+panel's **Add domain → Database** dropdown, or by using `attach` for a site that
+already exists. `remove-domain.sh --keep-db` detaches without deleting.
+
 ### Verify and inspect
 
 ```bash
@@ -259,7 +275,7 @@ bash scripts/setup-panel.sh      # install panel vhost (:8083), auth, sudoers, U
 bash scripts/uninstall-panel.sh  # remove panel only — sites, certs and stack stay intact
 ```
 
-The panel is served on port **8083** with basic auth. Its dashboard uses `status.sh --json` to list domains (app type, DB/user, cert expiry, logs), and its actions call the same guarded scripts through a sudoers drop-in limited to those script paths. CSRF tokens protect POST actions; see `config/panel.conf.example` for the admin path and credentials. After each action the domain list and the recent-actions table refresh in place, while the action's output stays on screen; every outcome is appended to `/var/log/wsa-panel/actions.log`, so earlier entries are never cleared.
+The panel is served on port **8083** with basic auth. Its dashboard uses `status.sh --json` to list domains (app type, DB/user, cert expiry, logs), and its actions call the same guarded scripts through a sudoers drop-in limited to those script paths. CSRF tokens protect POST actions; see `config/panel.conf.example` for the admin path and credentials. The panel has two tabs: **Domains** (stack state, domain list, per-domain Smoke/Renew buttons, add/TLS/remove) and **Databases** (managed DB inventory, create/delete/attach). The Add domain form has a Database dropdown so an empty DB can be connected to WordPress at deploy time. After each action the visible cards and the recent-actions table refresh in place, while the action's output stays on screen; every outcome is appended to `/var/log/wsa-panel/actions.log`, so earlier entries are never cleared.
 
 ### Path to LAMP
 

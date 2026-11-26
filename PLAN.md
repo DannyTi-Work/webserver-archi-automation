@@ -128,9 +128,16 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 
 ---
 
+## Database management module
+
+- [x] `scripts/databases.sh` — independent DB lifecycle: `--json` inventory, `create`, `delete`, `attach`; metadata under `/var/lib/wsa/databases/*.meta` tracks owner and attached domain
+- [x] `add-domain.sh --db <name>` connects an existing managed (possibly empty) database to a new WordPress/static site; default still auto-creates a dedicated DB
+- [x] `remove-domain.sh --keep-db` detaches instead of dropping; a managed DB attached to a domain is never dropped by domain removal
+- [x] Panel **Databases** tab: inventory, create/delete, attach to an existing WordPress site; Add domain has a Database dropdown for deploy-time connection (Hestia-style modular linking)
+
 ## Phase 3 — `scripts/add-domain.sh <domain>` (core feature)
 
-- [x] Call `preflight_check domain` at the top (DNS must resolve to this VPS)
+- [x] Call `preflight_check add-domain` at the top (DNS must resolve; duplicate domain = hard fail)
 - [x] Docroot `/var/www/<domain>/public_html` with correct ownership/mode
 - [x] Marker file in docroot (e.g. `<h1><domain></h1>` or `marker.txt`) so smoke tests can prove which site answered
 - [x] Per-domain access/error logs

@@ -113,6 +113,7 @@ function panel_scripts(): array
         'tls' => $root . '/scripts/tls.sh',
         'remove' => $root . '/scripts/remove-domain.sh',
         'prepare_wp' => $root . '/scripts/prepare-wordpress.sh',
+        'databases' => $root . '/scripts/databases.sh',
         'smoke' => $root . '/tests/smoke.sh',
     ];
 }

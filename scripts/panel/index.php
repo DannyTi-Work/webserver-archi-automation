@@ -10,6 +10,16 @@ $cfg = panel_config();
 $csrf = csrf_token();
 $recentActions = action_log_tail(30);
 
+// Managed databases live in their own module; load them for the Databases tab.
+$databases = [];
+$dbResult = run_privileged('databases', ['--json'], [], 60);
+if ($dbResult[0] === 0) {
+    $decodedDb = json_decode($dbResult[1], true);
+    if (is_array($decodedDb) && is_array($decodedDb['databases'] ?? null)) {
+        $databases = $decodedDb['databases'];
+    }
+}
+
 $statusResult = run_privileged('status', ['--json'], [], 60);
 $state = null;
 $statusError = '';
@@ -278,6 +288,32 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
       padding: 10px 12px;
       background: var(--bg);
     }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin: 4px 0 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tab {
+      background: transparent;
+      color: var(--muted);
+      border: 0;
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
+      padding: 8px 14px;
+      font-size: 14px;
+    }
+
+    .tab.active {
+      color: var(--fg);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-panel[hidden] {
+      display: none;
+    }
   </style>
 </head>
 
@@ -286,6 +322,12 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
   <h1>WSA Control Panel</h1>
   <div class="sub">Managed on this VPS &middot; <code><?= e($panelUrl) ?></code></div>
 
+  <div class="tabs">
+    <button class="tab active" data-tab="domains">Domains</button>
+    <button class="tab" data-tab="databases">Databases</button>
+  </div>
+
+  <div id="tab-domains" class="tab-panel">
   <div class="card">
     <h2>Stack state</h2>
     <?php if ($statusError !== ''): ?>
@@ -398,7 +440,7 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
     <?php endif; ?>
   </div>
 
-  <div class="card">
+  <div class="card" id="domain-actions-card">
     <h2>Domain actions</h2>
     <p class="small">Each action needs a domain. For an existing site, you can copy its name from the Domains table above.</p>
     <div class="grid actions-grid">
@@ -412,6 +454,15 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
             <option value="wordpress">wordpress</option>
           </select>
         </label>
+        <label>Database
+          <select name="db">
+            <option value="">create dedicated DB</option>
+            <?php foreach ($databases as $dbRow): ?>
+              <option value="<?= e((string)($dbRow['name'] ?? '')) ?>"><?= e((string)($dbRow['name'] ?? '')) ?><?= ((string)($dbRow['attached_to'] ?? '-') !== '-') ? ' (in use)' : '' ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+        <p class="small">Select an existing database — e.g. an empty one from the Databases tab — to connect it to this site at deploy time.</p>
         <button>Add domain</button>
       </form>
       <form class="action" data-action="tls">
@@ -429,6 +480,66 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
       </form>
     </div>
   </div>
+  </div><!-- /tab-domains -->
+
+  <div id="tab-databases" class="tab-panel" hidden>
+    <div class="card" id="databases-card">
+      <h2>Databases <span class="small">(<?= count($databases) ?>)</span></h2>
+      <p class="small">Managed MariaDB databases. Passwords stay in <code>.env</code> (mode 600).</p>
+      <?php if (empty($databases)): ?>
+        <p class="small">No managed databases yet. Create one below.</p>
+      <?php else: ?>
+        <table>
+          <thead><tr><th>Database</th><th>User</th><th>Password</th><th>Used by</th><th>Actions</th></tr></thead>
+          <tbody>
+            <?php foreach ($databases as $dbRow): ?>
+              <?php $dbName = (string)($dbRow['name'] ?? ''); ?>
+              <tr>
+                <td><strong><?= e($dbName) ?></strong><?= empty($dbRow['db_present']) ? ' <span class="bad">missing</span>' : '' ?></td>
+                <td class="small"><?= e((string)($dbRow['user'] ?? '')) ?></td>
+                <td class="small"><?= !empty($dbRow['password_present']) ? 'in .env' : 'missing' ?></td>
+                <td class="small"><?= e((string)($dbRow['attached_to'] ?? '-')) ?></td>
+                <td>
+                  <form data-action="db_delete">
+                    <input type="hidden" name="name" value="<?= e($dbName) ?>">
+                    <button class="button-small button-danger">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      <?php endif; ?>
+    </div>
+
+    <div class="card">
+      <h2>Database actions</h2>
+      <p class="small">Create an empty database, then attach it to WordPress with the Add domain form's Database selector (or with Attach below).</p>
+      <div class="grid actions-grid">
+        <form class="action" data-action="db_create">
+          <h3>Create database</h3>
+          <p class="small">Creates the DB and a least-privilege user; password is generated into <code>.env</code>.</p>
+          <label>Database name <input name="name" required placeholder="blogdb"></label>
+          <label>User (optional) <input name="dbuser" placeholder="defaults to &lt;name&gt;_u"></label>
+          <button>Create database</button>
+        </form>
+        <form class="action" data-action="db_attach">
+          <h3>Attach to WordPress</h3>
+          <p class="small">Point an existing WordPress site at this database by rewriting its <code>wp-config.php</code>.</p>
+          <label>Database
+            <select name="name" required>
+              <option value="">select a database</option>
+              <?php foreach ($databases as $dbRow): ?>
+                <option value="<?= e((string)($dbRow['name'] ?? '')) ?>"><?= e((string)($dbRow['name'] ?? '')) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+          <label>Domain <input name="domain" required placeholder="example.com"></label>
+          <button>Attach database</button>
+        </form>
+      </div>
+    </div>
+  </div><!-- /tab-databases -->
 
   <div class="card">
     <h2>Last action output</h2>
@@ -489,7 +600,7 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
-        ['domains-card', 'log-card'].forEach(function (id) {
+        ['domains-card', 'databases-card', 'domain-actions-card', 'log-card'].forEach(function (id) {
           const fresh = doc.getElementById(id);
           const current = document.getElementById(id);
           if (fresh && current) current.innerHTML = fresh.innerHTML;
@@ -520,6 +631,17 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         out.textContent = 'Request failed: ' + err;
       }
     }
+
+    document.querySelectorAll('.tab').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('.tab').forEach(function (b) {
+          b.classList.toggle('active', b === btn);
+        });
+        document.querySelectorAll('.tab-panel').forEach(function (panel) {
+          panel.hidden = (panel.id !== 'tab-' + btn.dataset.tab);
+        });
+      });
+    });
 
     // Delegated so buttons inside #domains-card keep working after that card
     // is replaced by refreshState().
