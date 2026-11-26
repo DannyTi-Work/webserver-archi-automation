@@ -156,9 +156,54 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
 
     form {
       display: flex;
-      flex-wrap: wrap;
+      flex-direction: column;
       gap: 8px;
-      align-items: flex-end;
+      align-items: stretch;
+    }
+
+    .actions-grid {
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+    }
+
+    .action {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .action h3 {
+      font-size: 13px;
+      margin: 0 0 2px;
+    }
+
+    .action p {
+      margin: 0 0 8px;
+    }
+
+    .action input:not([type=checkbox]),
+    .action select {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .action input[type=checkbox] {
+      width: auto;
+    }
+
+    .action button,
+    .maintenance button {
+      align-self: flex-start;
+    }
+
+    .button-danger {
+      background: var(--bad);
+      color: #1a0808;
+    }
+
+    .button-quiet {
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid var(--line);
     }
 
     label {
@@ -207,6 +252,17 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
     .error {
       color: var(--bad);
     }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .output {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: var(--bg);
+    }
   </style>
 </head>
 
@@ -243,6 +299,23 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         </div>
       </div>
     <?php endif; ?>
+  </div>
+
+  <div class="card">
+    <h2>Server maintenance</h2>
+    <p class="small">Server-wide tasks — no domain input needed.</p>
+    <div class="grid actions-grid">
+      <form class="action" data-action="fetch_wp">
+        <h3>Fetch WordPress package</h3>
+        <p class="small">Download or refresh the shared template in <code>/var/lib/wsa/wordpress</code>. Does not create a site.</p>
+        <button class="button-quiet">Fetch WordPress package</button>
+      </form>
+      <form class="action" data-action="renew">
+        <h3>Renew dry-run</h3>
+        <p class="small">Check renewal for <em>all</em> certificates on this VPS. Simulates only — issues nothing.</p>
+        <button class="button-quiet">Renew dry-run</button>
+      </form>
+    </div>
   </div>
 
   <div class="card" id="domains-card">
@@ -303,9 +376,12 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
   </div>
 
   <div class="card">
-    <h2>Actions</h2>
-    <div class="grid">
-      <form data-action="add">
+    <h2>Domain actions</h2>
+    <p class="small">Each action needs a domain. For an existing site, you can copy its name from the Domains table above.</p>
+    <div class="grid actions-grid">
+      <form class="action" data-action="add">
+        <h3>Add domain</h3>
+        <p class="small">Create docroot, database/user and vhost. A duplicate domain is rejected.</p>
         <label>Domain <input name="domain" required placeholder="example.com"></label>
         <label>App
           <select name="app">
@@ -315,25 +391,31 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         </label>
         <button>Add domain</button>
       </form>
-      <form data-action="tls">
+      <form class="action" data-action="tls">
+        <h3>Issue TLS</h3>
+        <p class="small">Issue and install a certificate for this domain only.</p>
         <label>Domain <input name="domain" required placeholder="example.com"></label>
-        <label><input type="checkbox" name="staging" value="1"> staging</label>
+        <label><input type="checkbox" name="staging" value="1"> staging (untrusted test cert)</label>
         <button>Issue TLS</button>
       </form>
-      <form data-action="fetch_wp">
-        <button>Fetch WordPress package</button>
-      </form>
-      <form data-action="smoke">
+      <form class="action" data-action="smoke">
+        <h3>Smoke test</h3>
+        <p class="small">Verify HTTPS, PHP, DB and routing. Blank domain checks all configured sites.</p>
         <label>Domain <input name="domain" placeholder="example.com (blank = all)"></label>
         <button>Smoke test</button>
       </form>
-      <form data-action="renew"><button>Renew dry-run</button></form>
-      <form data-action="remove">
+      <form class="action" data-action="remove">
+        <h3>Remove domain</h3>
+        <p class="small error">Destructive: deletes docroot, logs, database and user. Certificates are left on disk.</p>
         <label>Domain <input name="domain" required placeholder="example.com"></label>
-        <button>Remove domain</button>
+        <button class="button-danger">Remove domain</button>
       </form>
     </div>
-    <pre id="result" class="small" style="margin-top:14px">Ready.</pre>
+  </div>
+
+  <div class="card">
+    <h2>Last action output</h2>
+    <pre id="result" class="small output">Ready.</pre>
   </div>
 
   <div class="card" id="log-card">
