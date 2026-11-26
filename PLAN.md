@@ -202,11 +202,11 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 ## Phase 8 — Web admin panel (`scripts/panel/`)
 
 - [x] `scripts/panel/index.php` — dashboard: stack state, per-domain list (docroot, cert status, logs), cert expiry per domain; shows app type (static / WordPress) and WP version where available
-- [x] `scripts/panel/actions.php` — action endpoints: add domain, TLS per domain, renew, smoke, remove domain, **Deploy WordPress** (calls `prepare-wordpress.sh` once then `add-domain.sh --app wordpress <domain>`); each calls the existing script through `sudo`, inheriting preflight + idempotency; allow choosing app type (static / wordpress) when adding a domain. Shared session/CSRF/sudo helpers live in `scripts/panel/bootstrap.php`.
+- [x] `scripts/panel/actions.php` — action endpoints: add domain, TLS per domain, renew, smoke, remove domain, **Fetch WordPress package** (calls `prepare-wordpress.sh` only — a site is deployed with Add domain, App = wordpress); each calls the existing script through `sudo`, inheriting preflight + idempotency; allow choosing app type (static / wordpress) when adding a domain. Shared session/CSRF/sudo helpers live in `scripts/panel/bootstrap.php`.
 - [x] `scripts/status.sh` — machine-readable state dump: stack state, domains with app type + WP version, cert expiry (via `certbot certificates` or openssl), latest log lines; used by the panel
 - [x] `config/panel.conf.example` — panel options (admin path, port, basic-auth, optional WordPress template path default `/var/lib/wsa/wordpress`); real `panel.conf` is gitignored
 - [ ] Security: passwordless sudo rule limited to the specific script paths; basic auth on the admin path + optional IP restriction; domain args validated by `add-domain.sh` itself; POST actions carry a CSRF token; privileged panel actions run only through the existing sudo-limited scripts
-- [ ] README quick protocols — document the panel URL and how to log in; note the admin path and the Deploy WordPress action
+- [ ] README quick protocols — document the panel URL and how to log in; note the admin path and the Fetch WordPress package action
 
 ---
 

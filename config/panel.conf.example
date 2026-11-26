@@ -57,7 +57,7 @@ FAIL2BAN_BANTIME="3600"
 # Panel PHP lives outside every site docroot.
 PANEL_ROOT="/srv/wsa-panel/public"
 
-# Shared WordPress template used by the Deploy WordPress action.
+# Shared WordPress template used by the Fetch WordPress package action.
 WP_TEMPLATE_DIR="/var/lib/wsa/wordpress"
 
 PANEL_ACCESS_LOG="/var/log/nginx/wsa-panel.access.log"

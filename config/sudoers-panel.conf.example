@@ -14,11 +14,18 @@
 # The '*' wildcard permits any arguments, but actions.php must build argv as an
 # array (proc_open with an array, never a shell string) and validate the domain
 # before calling sudo. The scripts themselves are the final validation layer.
+#
+# A trailing " *" still requires at least one argument, so scripts the panel
+# calls with NO arguments also need an exact, argument-less spec:
+#   prepare-wordpress.sh  -> Fetch WordPress package
+#   smoke.sh              -> Smoke test with a blank domain (checks all sites)
 
 www-data ALL=(root) NOPASSWD: \
     /usr/bin/bash __REPO_ROOT__/scripts/status.sh *, \
     /usr/bin/bash __REPO_ROOT__/scripts/add-domain.sh *, \
     /usr/bin/bash __REPO_ROOT__/scripts/tls.sh *, \
     /usr/bin/bash __REPO_ROOT__/scripts/remove-domain.sh *, \
+    /usr/bin/bash __REPO_ROOT__/scripts/prepare-wordpress.sh, \
     /usr/bin/bash __REPO_ROOT__/scripts/prepare-wordpress.sh *, \
+    /usr/bin/bash __REPO_ROOT__/tests/smoke.sh, \
     /usr/bin/bash __REPO_ROOT__/tests/smoke.sh *

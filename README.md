@@ -249,7 +249,7 @@ bash scripts/add-domain.sh example.com --app wordpress
 
 `add-domain.sh` copies the template into the docroot and generates `wp-config.php` from that domain's database credentials, with per-domain salts and table prefix. Existing site content is never overwritten on re-run. In `config/domains.conf` batch mode, use `example.com|wordpress` per line (plain `example.com` stays static). Updating the shared template affects only **new** domains — existing sites update via wp-admin / wp-cli.
 
-The web admin panel (Phase 8) exposes this as a **Deploy WordPress** action.
+The web admin panel (Phase 8) exposes this as a **Fetch WordPress package** button; deploy a site with **Add domain** and App = `wordpress`.
 
 ### Web admin panel
 

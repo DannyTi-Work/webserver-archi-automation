@@ -104,14 +104,10 @@ switch ($action) {
         $respond(run_privileged('remove', [$domain, '--yes']));
         break;
 
-    case 'deploy_wp':
-        $need_domain($domain);
-        // prepare-wordpress.sh is idempotent; run it once before adding the site.
-        $prepare = run_privileged('prepare_wp', [], [], 600);
-        if ($prepare[0] !== 0) {
-            $respond($prepare);
-        }
-        $respond(run_privileged('add', [$domain, '--app', 'wordpress']));
+    case 'fetch_wp':
+        // Only download/refresh the shared template. Deploying a site is done
+        // with Add domain (App = wordpress), so this action needs no domain.
+        $respond(run_privileged('prepare_wp', [], [], 600));
         break;
 
     default:

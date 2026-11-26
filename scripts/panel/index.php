@@ -320,9 +320,8 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         <label><input type="checkbox" name="staging" value="1"> staging</label>
         <button>Issue TLS</button>
       </form>
-      <form data-action="deploy_wp">
-        <label>Domain <input name="domain" required placeholder="example.com"></label>
-        <button>Deploy WordPress</button>
+      <form data-action="fetch_wp">
+        <button>Fetch WordPress package</button>
       </form>
       <form data-action="smoke">
         <label>Domain <input name="domain" placeholder="example.com (blank = all)"></label>
