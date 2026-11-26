@@ -258,7 +258,7 @@ bash scripts/setup-panel.sh      # install panel vhost (:8083), auth, sudoers, U
 bash scripts/uninstall-panel.sh  # remove panel only — sites, certs and stack stay intact
 ```
 
-The panel is served on port **8083** with basic auth. Its dashboard uses `status.sh --json` to list domains (app type, DB/user, cert expiry, logs), and its actions call the same guarded scripts through a sudoers drop-in limited to those script paths. CSRF tokens protect POST actions; see `config/panel.conf.example` for the admin path and credentials.
+The panel is served on port **8083** with basic auth. Its dashboard uses `status.sh --json` to list domains (app type, DB/user, cert expiry, logs), and its actions call the same guarded scripts through a sudoers drop-in limited to those script paths. CSRF tokens protect POST actions; see `config/panel.conf.example` for the admin path and credentials. After each action the domain list and the recent-actions table refresh in place, while the action's output stays on screen; every outcome is appended to `/var/log/wsa-panel/actions.log`, so earlier entries are never cleared.
 
 ### Path to LAMP
 

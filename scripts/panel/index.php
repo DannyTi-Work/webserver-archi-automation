@@ -245,7 +245,7 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
     <?php endif; ?>
   </div>
 
-  <div class="card">
+  <div class="card" id="domains-card">
     <h2>Domains <span class="small">(<?= count($domains) ?>)</span></h2>
     <?php if (empty($domains)): ?>
       <p class="small">No domains detected.</p>
@@ -337,7 +337,7 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
     <pre id="result" class="small" style="margin-top:14px">Ready.</pre>
   </div>
 
-  <div class="card">
+  <div class="card" id="log-card">
     <h2>Recent actions (persisted log)</h2>
     <?php if (empty($recentActions)): ?>
       <p class="muted">No actions recorded yet. Successes and failures are both kept in
@@ -373,6 +373,27 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
     const TOKEN = <?= json_encode($csrf, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
     const out = document.getElementById('result');
 
+    // Re-render only the state cards from a fresh copy of this page. #result
+    // is deliberately left alone, so the output of the action just performed
+    // stays visible. The persisted log card is re-rendered from disk, which
+    // keeps every earlier entry and adds the one just written.
+    async function refreshState() {
+      try {
+        const res = await fetch('index.php?_=' + Date.now(), {
+          headers: { 'Cache-Control': 'no-store' }
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        ['domains-card', 'log-card'].forEach(function (id) {
+          const fresh = doc.getElementById(id);
+          const current = document.getElementById(id);
+          if (fresh && current) current.innerHTML = fresh.innerHTML;
+        });
+      } catch (err) {
+        out.textContent += '\n(state refresh failed: ' + err + ')';
+      }
+    }
+
     async function call(action, payload) {
       payload = Object.assign({ action: action, csrf_token: TOKEN }, payload);
       out.textContent = 'Running ' + action + ' ...';
@@ -387,8 +408,9 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         out.textContent = head + '\n' + (data.error_message || '') +
           (data.output || '') + (data.error || '') +
           '\n(log saved — see Recent actions below)';
-        // No auto-reload: keep both success and failure output visible.
-        // State refreshes only when the user reloads the page.
+        // Refresh the domain list + log in place. No full reload, so the
+        // result text above stays visible for both successes and failures.
+        await refreshState();
       } catch (err) {
         out.textContent = 'Request failed: ' + err;
       }
