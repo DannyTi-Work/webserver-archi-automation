@@ -3,6 +3,7 @@
 # Usage:
 #   bash scripts/users.sh --json
 #   bash scripts/users.sh create <user> [--role admin|user] [--password PASS]
+#   bash scripts/users.sh ensure <user>       # repair a missing FPM pool
 #   bash scripts/users.sh suspend <user>
 #   bash scripts/users.sh unsuspend <user>
 #   bash scripts/users.sh delete <user> [--yes] [--force]
@@ -93,6 +94,29 @@ account_op() {
   return 1
 }
 
+# Render a user's PHP-FPM pool from metadata. Used by create and by ensure
+# (which repairs a missing pool, e.g. after an interrupted delete).
+write_pool() {
+  local user="$1" socket="$2" home_dir="$3" pool="$4" tmp
+  tmp="$(mktemp)"
+  cat > "$tmp" <<POOL
+[${user}]
+user = ${user}
+group = ${user}
+listen = ${socket}
+listen.owner = www-data
+listen.group = www-data
+listen.mode = 0660
+pm = ondemand
+pm.max_children = 5
+pm.process_idle_timeout = 10s
+pm.max_requests = 500
+chdir = ${home_dir}
+POOL
+  run_root install -o root -g root -m 0644 "$tmp" "$pool"
+  rm -f "$tmp"
+}
+
 # Count domains / databases owned by a user (from their metadata).
 owned_count() {
   local user="$1" n=0 meta
@@ -144,7 +168,7 @@ if [[ "${1:-}" == "--json" ]]; then
 fi
 
 cmd="${1:-}"
-[[ -n "$cmd" ]] || { printf 'usage: users.sh <--json|create|suspend|unsuspend|delete|passwd> ...\n' >&2; exit 2; }
+[[ -n "$cmd" ]] || { printf 'usage: users.sh <--json|create|ensure|suspend|unsuspend|delete|passwd> ...\n' >&2; exit 2; }
 shift
 
 case "$cmd" in
@@ -185,28 +209,42 @@ case "$cmd" in
     run_root chmod 0600 "${USERS_DIR}/${user}.htpasswd"
     [[ -f "${USERS_DIR}/${user}.password" ]] && run_root chmod 0600 "${USERS_DIR}/${user}.password"
 
-    tmp="$(mktemp)"
-    cat > "$tmp" <<POOL
-[${user}]
-user = ${user}
-group = ${user}
-listen = ${socket}
-listen.owner = www-data
-listen.group = www-data
-listen.mode = 0660
-pm = ondemand
-pm.max_children = 5
-pm.process_idle_timeout = 10s
-pm.max_requests = 500
-POOL
-    run_root install -o root -g root -m 0644 "$tmp" "$pool"
-    rm -f "$tmp"
+    write_pool "$user" "$socket" "$home_dir" "$pool"
     fpm_gate_and_reload
     write_meta "$user" "$role" active "$home_dir" "$socket" "$pool"
     if [[ -f "${USERS_DIR}/${user}.password" ]]; then
       info "generated login password saved at ${USERS_DIR}/${user}.password (mode 600)"
     fi
     log "done: user $user (role $role, socket $socket)"
+    ;;
+
+  ensure)
+    # Repair an existing managed user whose pool file went missing.
+    user="${1:-}"
+    valid_user "$user" || fail "invalid user: $user"
+    [[ -f "$(meta_path "$user")" ]] || fail "user $user is not managed by WSA"
+    require_root
+    php_pool_details
+    state="$(meta_get "$(meta_path "$user")" STATE)"
+    [[ "$state" == "active" ]] || fail "user $user is $state — unsuspend it first"
+    socket="$(meta_get "$(meta_path "$user")" FPM_SOCKET)"
+    home_dir="$(meta_get "$(meta_path "$user")" HOME_DIR)"
+    pool="$(meta_get "$(meta_path "$user")" POOL_CONF)"
+    [[ -n "$socket" && -n "$pool" ]] || fail "incomplete metadata for user $user"
+    if [[ ! -f "$pool" ]]; then
+      write_pool "$user" "$socket" "${home_dir:-/home/$user}" "$pool"
+      fpm_gate_and_reload
+      info "restored missing PHP-FPM pool for $user"
+    else
+      info "PHP-FPM pool already present for $user"
+    fi
+    id -u "$user" >/dev/null 2>&1 || fail "Linux user $user is missing — recreate the user"
+    for _wait in 1 2 3 4 5; do
+      [[ -S "$socket" ]] && break
+      sleep 1
+    done
+    [[ -S "$socket" ]] || warn "socket $socket not present yet — pool will start on first use"
+    log "done: user $user ready"
     ;;
 
   suspend|unsuspend)
@@ -293,7 +331,7 @@ POOL
     ;;
 
   *)
-    printf 'usage: users.sh <--json|create|suspend|unsuspend|delete|passwd> ...\n' >&2
+    printf 'usage: users.sh <--json|create|ensure|suspend|unsuspend|delete|passwd> ...\n' >&2
     exit 2
     ;;
 esac

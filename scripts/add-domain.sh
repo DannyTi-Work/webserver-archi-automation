@@ -108,7 +108,13 @@ if [[ -n "$owner" ]]; then
   db_prefix="$(grep -m1 '^DB_PREFIX=' "$owner_meta" | cut -d= -f2-)"
   owner_base="/var/www/${owner}"
   [[ -n "$owner_socket" && -n "$db_prefix" ]] || fail "incomplete metadata for user $owner"
-  [[ -S "$owner_socket" ]] || fail "PHP-FPM socket $owner_socket is missing — was the user's pool started?"
+  if [[ ! -S "$owner_socket" ]]; then
+    # Pool may have been lost to an interrupted operation — repair it from
+    # metadata instead of leaving the whole add action dead in the water.
+    info "user pool missing — attempting repair: $owner"
+    bash "${SCRIPT_DIR}/users.sh" ensure "$owner" || \
+      fail "PHP-FPM socket $owner_socket is missing and could not be restored"
+  fi
   info "provisioning as user $owner (socket $owner_socket)"
 fi
 

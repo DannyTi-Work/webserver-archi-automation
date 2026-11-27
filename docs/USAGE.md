@@ -115,6 +115,7 @@ bash scripts/add-domain.sh blog.example.com --owner alice --app wordpress
 bash scripts/databases.sh create shop --owner alice   # DB name: alice_shop
 bash scripts/users.sh suspend alice                   # pool off + DB accounts locked
 bash scripts/users.sh unsuspend alice
+bash scripts/users.sh ensure alice                   # repair a missing FPM pool
 bash scripts/users.sh delete alice --yes --force
 ```
 

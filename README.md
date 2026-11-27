@@ -214,6 +214,7 @@ bash scripts/users.sh --json                 # user inventory (panel uses this)
 bash scripts/users.sh create alice --role user --password 'SECRET'
 bash scripts/users.sh suspend alice          # disables the FPM pool, locks DB users
 bash scripts/users.sh unsuspend alice
+bash scripts/users.sh ensure alice           # repair a missing FPM pool
 bash scripts/users.sh delete alice --yes     # refuses while it owns resources
 ```
 
