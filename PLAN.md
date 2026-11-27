@@ -136,6 +136,17 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 - [x] Per-domain ownership metadata (`/var/lib/wsa/sites/<domain>.meta`); status/smoke/remove read DOCROOT from it; existing untagged sites stay legacy and report owner `admin`
 - [x] Panel Users tab: inventory, create/suspend/unsuspend/delete, owner columns and selectors in Domains/Databases tabs
 
+## Next plan — per-user access and harder isolation
+
+> Since the password isn't wired to anything yet, the cheapest high-value next step is per-user login — the bcrypt hashes are already there, so it's a login form plus role checks in `actions.php` and filtering the tabs by owner. After that, tightening docroots to `0750` would turn the read isolation on too.
+
+- [ ] Replace the single shared Basic Auth gate with per-user login using the bcrypt hashes in `/var/lib/wsa/users/<user>.htpasswd`: login form, session, role checks in `scripts/panel/actions.php`
+- [ ] Scope the panel to the signed-in user: admin sees all domains/databases/users; a normal `user` only sees and manages resources whose `OWNER` matches. Filter Domains, Databases and the action endpoints, not just the tables
+- [ ] Keep `admin` as a full-access role and document the fallback if a user is suspended or deleted (sessions must not keep working)
+- [ ] Tighten per-user docroots from `0755` to `0750` (`<user>:www-data`) and regular files to `0640`; verify nginx (group `www-data`) and the user's PHP-FPM pool still serve PHP sites after the change
+- [ ] Check the shared PHP-FPM socket permissions and any cross-user reads before calling the isolation complete; note that sites owned by the same user still share one identity
+- [ ] Re-run the core domain / database / user test cycle through the GUI after each change; confirm create, delete, suspend and unsuspend through the real panel, not only CLI harnesses
+
 ## Database management module
 
 - [x] `scripts/databases.sh` — independent DB lifecycle: `--json` inventory, `create`, `delete`, `attach`; metadata under `/var/lib/wsa/databases/*.meta` tracks owner and attached domain
