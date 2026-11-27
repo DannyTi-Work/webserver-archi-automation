@@ -234,7 +234,10 @@ cat > "$dropin_tmp" <<'EOF'
 # Required for panel actions that call sudo-guarded scripts: certbot needs
 # /etc/letsencrypt writable, nginx vhosts live under /etc/nginx, and user
 # management writes PHP-FPM pool configs under /etc/php.
-ReadWritePaths=/etc/letsencrypt /etc/nginx /etc/php
+# /etc itself must be writable too: shadow-tools (useradd/userdel) create
+# /etc/passwd.lock and friends. With ProtectSystem=full those bind mounts are
+# read-only, which makes useradd fail with "cannot lock /etc/passwd".
+ReadWritePaths=/etc /etc/letsencrypt /etc/nginx /etc/php
 EOF
 if run_root test -f "$fpm_dropin" && run_root cmp -s "$dropin_tmp" "$fpm_dropin"; then
   info "php-fpm sandbox drop-in already up to date"

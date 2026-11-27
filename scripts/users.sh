@@ -78,19 +78,24 @@ fpm_gate_and_reload() {
 # try again later". Retry briefly instead of failing the whole panel action.
 account_op() {
   local label="$1"; shift
-  local attempt
+  local attempt out
   for attempt in 1 2 3 4 5; do
-    if run_root "$@"; then
+    if out="$(run_root "$@" 2>&1)"; then
+      [[ -n "$out" ]] && printf '%s\n' "$out"
       return 0
     fi
-    if [[ -f /etc/passwd.lock || -f /etc/group.lock ]]; then
-      info "account database locked, retrying $label ($attempt/5)"
+    # shadow-utils prints "cannot lock /etc/passwd" both for real contention
+    # and when the account files are read-only in a sandbox, so retry on the
+    # message itself — a lock file may never be visible to us.
+    if grep -qi 'cannot lock' <<<"$out" || [[ -f /etc/passwd.lock || -f /etc/group.lock ]]; then
+      info "account database unavailable, retrying $label ($attempt/5)"
       sleep 2
     else
+      [[ -n "$out" ]] && printf '%s\n' "$out" >&2
       return 1
     fi
   done
-  warn "account database stayed locked while trying to $label — try again later"
+  warn "account database stayed unavailable while trying to $label — try again later"
   return 1
 }
 
