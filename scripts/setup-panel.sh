@@ -232,8 +232,9 @@ dropin_tmp="$(mktemp)"
 cat > "$dropin_tmp" <<'EOF'
 [Service]
 # Required for panel actions that call sudo-guarded scripts: certbot needs
-# /etc/letsencrypt writable and nginx vhosts live under /etc/nginx.
-ReadWritePaths=/etc/letsencrypt /etc/nginx
+# /etc/letsencrypt writable, nginx vhosts live under /etc/nginx, and user
+# management writes PHP-FPM pool configs under /etc/php.
+ReadWritePaths=/etc/letsencrypt /etc/nginx /etc/php
 EOF
 if run_root test -f "$fpm_dropin" && run_root cmp -s "$dropin_tmp" "$fpm_dropin"; then
   info "php-fpm sandbox drop-in already up to date"
