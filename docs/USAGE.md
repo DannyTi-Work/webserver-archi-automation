@@ -106,6 +106,24 @@ bash scripts/add-domain.sh          # provisions every listed domain
 bash scripts/preflight.sh add-domain example.com  # check before adding (duplicate = hard fail)
 ```
 
+## Users (Hestia-style)
+
+```bash
+bash scripts/users.sh --json
+bash scripts/users.sh create alice --role user        # Linux user + FPM pool
+bash scripts/add-domain.sh blog.example.com --owner alice --app wordpress
+bash scripts/databases.sh create shop --owner alice   # DB name: alice_shop
+bash scripts/users.sh suspend alice                   # pool off + DB accounts locked
+bash scripts/users.sh unsuspend alice
+bash scripts/users.sh delete alice --yes --force
+```
+
+A user's domains live at `/var/www/<user>/<domain>/public_html`, run under that
+user's PHP-FPM socket, and their DBs are prefixed with `<user>_`. Suspension
+renames the pool config out of nginx/PHP-FPM's view and locks the user's DB
+accounts. Existing untagged resources are treated as owner `admin` with the
+legacy flat layout — no migration is performed.
+
 ## Database management
 
 Databases are managed independently of domains. Each domain still gets its own

@@ -307,6 +307,10 @@ pf_duplicate_domain() {
   [[ -e "${sites_dir}/${domain}.conf" || -L "${sites_dir}/${domain}.conf" ]] && found="${found} nginx site"
   [[ -e "${confd_dir}/${domain}.conf" ]] && found="${found} nginx conf"
   [[ -e "${web_root}/${domain}" ]] && found="${found} docroot"
+  # Hestia-style user layout: /var/www/<user>/<domain>
+  for candidate in "${web_root}"/*/"${domain}"; do
+    [[ -e "$candidate" ]] && found="${found} docroot" && break
+  done
   if [[ -n "$found" ]]; then
     if [[ "$mode" == "fail" ]]; then
       pf_fail "duplicate domain $domain already has:${found} — refusing to add an existing domain"

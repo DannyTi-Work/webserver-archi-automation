@@ -140,6 +140,14 @@ emit_json() {
   [[ -z "$domain" ]] && domain="$(basename "$d" .conf)"
   slug="$(domain_slug "$domain")"
   docroot="/var/www/${domain}/public_html"
+  owner="admin"
+  site_meta="/var/lib/wsa/sites/${domain}.meta"
+  if [[ -f "$site_meta" ]]; then
+    meta_docroot="$(grep -m1 '^DOCROOT=' "$site_meta" | cut -d= -f2-)"
+    meta_owner="$(grep -m1 '^OWNER=' "$site_meta" | cut -d= -f2-)"
+    [[ -n "$meta_docroot" ]] && docroot="$meta_docroot"
+    [[ -n "$meta_owner" ]] && owner="$meta_owner"
+  fi
   vhost="$d"
   db="${slug}_db"
   dbuser="${slug}_u"
@@ -172,6 +180,7 @@ emit_json() {
 
   printf '%s{\n' "$first"
   printf '  "domain": "%s",\n' "$(json_escape "$domain")"
+  printf '  "owner": "%s",\n' "$(json_escape "$owner")"
   printf '  "app": "%s",\n' "$app"
   printf '  "wp_version": "%s",\n' "$(json_escape "$wp_ver")"
   printf '  "docroot": "%s",\n' "$(json_escape "$docroot")"

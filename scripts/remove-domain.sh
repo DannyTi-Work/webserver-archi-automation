@@ -52,6 +52,11 @@ for meta in /var/lib/wsa/databases/*.meta; do
 done
 [[ -n "$db_meta" ]] || db_meta="/var/lib/wsa/databases/${db}.meta"
 docroot="/var/www/${domain}"
+site_meta="/var/lib/wsa/sites/${domain}.meta"
+if [[ -f "$site_meta" ]]; then
+  meta_docroot="$(grep -m1 '^DOCROOT=' "$site_meta" | cut -d= -f2-)"
+  [[ -n "$meta_docroot" ]] && docroot="$(dirname -- "$meta_docroot")"
+fi
 vhost_sites="/etc/nginx/sites-available/${domain}.conf"
 link_sites="/etc/nginx/sites-enabled/${domain}.conf"
 vhost_confd="/etc/nginx/conf.d/${domain}.conf"
@@ -146,6 +151,8 @@ else
   info "credential entry removed from .env"
   run_root rm -f "$db_meta"
 fi
+
+run_root rm -f "$site_meta"
 
 log ""
 log "== remove-domain complete: $domain =="

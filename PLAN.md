@@ -128,6 +128,14 @@ Phase 0 is performed on the VPS itself, not on the developer's machine. From you
 
 ---
 
+## User accounts (Hestia-style isolation)
+
+- [x] `scripts/users.sh` — create/list/suspend/unsuspend/delete/passwd; real Linux user + home, dedicated PHP-FPM pool tested with `php-fpm -t`, bcrypt hash in gitignored `/var/lib/wsa/users/`, metadata records role/state/socket/DB prefix
+- [x] Suspend disables the FPM pool (fail-closed) and locks the user's DB accounts; unsuspend restores both
+- [x] `add-domain.sh --owner USER` uses `/var/www/<user>/<domain>`, the user's FPM socket and prefixed DB names; `databases.sh create --owner USER` prefixes DB names
+- [x] Per-domain ownership metadata (`/var/lib/wsa/sites/<domain>.meta`); status/smoke/remove read DOCROOT from it; existing untagged sites stay legacy and report owner `admin`
+- [x] Panel Users tab: inventory, create/suspend/unsuspend/delete, owner columns and selectors in Domains/Databases tabs
+
 ## Database management module
 
 - [x] `scripts/databases.sh` — independent DB lifecycle: `--json` inventory, `create`, `delete`, `attach`; metadata under `/var/lib/wsa/databases/*.meta` tracks owner and attached domain

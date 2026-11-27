@@ -60,6 +60,7 @@ $respond = static function (array $result) use ($action, $input): void {
         'staging' => !empty($input['staging']),
         'name' => $input['name'] ?? '',
         'db' => $input['db'] ?? '',
+        'owner' => $input['owner'] ?? '',
     ], JSON_UNESCAPED_SLASHES);
     action_log($action, $exit === 0 ? 'success' : 'failure', $exit, $args ?: '{}', $stdout, $stderr);
     json_response([
@@ -85,6 +86,13 @@ switch ($action) {
                 json_response(['ok' => false, 'error' => 'invalid database name'], 400);
             }
             array_push($args, '--db', $db);
+        }
+        $owner = trim((string)($input['owner'] ?? ''));
+        if ($owner !== '') {
+            if (!preg_match('/^[a-z][a-z0-9_-]{0,31}$/', $owner)) {
+                json_response(['ok' => false, 'error' => 'invalid user name'], 400);
+            }
+            array_push($args, '--owner', $owner);
         }
         $respond(run_privileged('add', $args));
         break;
@@ -135,6 +143,13 @@ switch ($action) {
             }
             array_push($args, '--user', $dbuser);
         }
+        $owner = trim((string)($input['owner'] ?? ''));
+        if ($owner !== '') {
+            if (!preg_match('/^[a-z][a-z0-9_-]{0,31}$/', $owner)) {
+                json_response(['ok' => false, 'error' => 'invalid user name'], 400);
+            }
+            array_push($args, '--owner', $owner);
+        }
         $respond(run_privileged('databases', $args));
         break;
 
@@ -153,6 +168,42 @@ switch ($action) {
             json_response(['ok' => false, 'error' => 'invalid database name'], 400);
         }
         $respond(run_privileged('databases', ['attach', $name, $domain]));
+        break;
+
+    case 'user_create':
+        $user = trim((string)($input['user'] ?? ''));
+        if (!preg_match('/^[a-z][a-z0-9_-]{0,31}$/', $user)) {
+            json_response(['ok' => false, 'error' => 'invalid user name'], 400);
+        }
+        $args = ['create', $user];
+        $role = trim((string)($input['role'] ?? 'user'));
+        if (!in_array($role, ['admin', 'user'], true)) {
+            json_response(['ok' => false, 'error' => 'invalid role'], 400);
+        }
+        array_push($args, '--role', $role);
+        $pass = (string)($input['password'] ?? '');
+        if ($pass !== '') {
+            array_push($args, '--password', $pass);
+        }
+        $respond(run_privileged('users', $args));
+        break;
+
+    case 'user_suspend':
+    case 'user_unsuspend':
+        $user = trim((string)($input['user'] ?? ''));
+        if (!preg_match('/^[a-z][a-z0-9_-]{0,31}$/', $user)) {
+            json_response(['ok' => false, 'error' => 'invalid user name'], 400);
+        }
+        $sub = $action === 'user_suspend' ? 'suspend' : 'unsuspend';
+        $respond(run_privileged('users', [$sub, $user]));
+        break;
+
+    case 'user_delete':
+        $user = trim((string)($input['user'] ?? ''));
+        if (!preg_match('/^[a-z][a-z0-9_-]{0,31}$/', $user)) {
+            json_response(['ok' => false, 'error' => 'invalid user name'], 400);
+        }
+        $respond(run_privileged('users', ['delete', $user, '--yes']));
         break;
 
     case 'fetch_wp':

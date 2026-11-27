@@ -20,6 +20,16 @@ if ($dbResult[0] === 0) {
     }
 }
 
+// Managed users for the Users tab and the owner selectors.
+$users = [];
+$userResult = run_privileged('users', ['--json'], [], 60);
+if ($userResult[0] === 0) {
+    $decodedUsers = json_decode($userResult[1], true);
+    if (is_array($decodedUsers) && is_array($decodedUsers['users'] ?? null)) {
+        $users = $decodedUsers['users'];
+    }
+}
+
 $statusResult = run_privileged('status', ['--json'], [], 60);
 $state = null;
 $statusError = '';
@@ -325,6 +335,7 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
   <div class="tabs">
     <button class="tab active" data-tab="domains">Domains</button>
     <button class="tab" data-tab="databases">Databases</button>
+    <button class="tab" data-tab="users">Users</button>
   </div>
 
   <div id="tab-domains" class="tab-panel">
@@ -379,6 +390,7 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         <thead>
           <tr>
             <th>Domain</th>
+            <th>Owner</th>
             <th>App</th>
             <th>Certificate</th>
             <th>HTTP / HTTPS</th>
@@ -397,6 +409,7 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
             ?>
             <tr>
               <td><strong><?= e($domain['domain'] ?? '') ?></strong></td>
+              <td class="small"><?= e((string)($domain['owner'] ?? 'admin')) ?></td>
               <td>
                 <?= e($domain['app'] ?? '') ?>
                 <?php if (!empty($domain['wp_version'])): ?>
@@ -462,7 +475,15 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
             <?php endforeach; ?>
           </select>
         </label>
-        <p class="small">Select an existing database — e.g. an empty one from the Databases tab — to connect it to this site at deploy time.</p>
+        <label>Owner
+          <select name="owner">
+            <option value="">admin (legacy layout)</option>
+            <?php foreach ($users as $u): ?>
+              <option value="<?= e((string)($u['user'] ?? '')) ?>"><?= e((string)($u['user'] ?? '')) ?> (<?= e((string)($u['state'] ?? '')) ?>)</option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+        <p class="small">Select an existing database to connect it at deploy time. Selecting a user creates user-prefixed paths, DB names and uses that user's PHP-FPM pool.</p>
         <button>Add domain</button>
       </form>
       <form class="action" data-action="tls">
@@ -490,13 +511,14 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         <p class="small">No managed databases yet. Create one below.</p>
       <?php else: ?>
         <table>
-          <thead><tr><th>Database</th><th>User</th><th>Password</th><th>Used by</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Database</th><th>User</th><th>Owner</th><th>Password</th><th>Used by</th><th>Actions</th></tr></thead>
           <tbody>
             <?php foreach ($databases as $dbRow): ?>
               <?php $dbName = (string)($dbRow['name'] ?? ''); ?>
               <tr>
                 <td><strong><?= e($dbName) ?></strong><?= empty($dbRow['db_present']) ? ' <span class="bad">missing</span>' : '' ?></td>
                 <td class="small"><?= e((string)($dbRow['user'] ?? '')) ?></td>
+                <td class="small"><?= e((string)($dbRow['owner'] ?? 'admin')) ?></td>
                 <td class="small"><?= !empty($dbRow['password_present']) ? 'in .env' : 'missing' ?></td>
                 <td class="small"><?= e((string)($dbRow['attached_to'] ?? '-')) ?></td>
                 <td>
@@ -521,6 +543,14 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
           <p class="small">Creates the DB and a least-privilege user; password is generated into <code>.env</code>.</p>
           <label>Database name <input name="name" required placeholder="blogdb"></label>
           <label>User (optional) <input name="dbuser" placeholder="defaults to &lt;name&gt;_u"></label>
+          <label>Owner
+            <select name="owner">
+              <option value="">admin (no prefix)</option>
+              <?php foreach ($users as $u): ?>
+                <option value="<?= e((string)($u['user'] ?? '')) ?>"><?= e((string)($u['user'] ?? '')) ?> (<?= e((string)($u['state'] ?? '')) ?>)</option>
+              <?php endforeach; ?>
+            </select>
+          </label>
           <button>Create database</button>
         </form>
         <form class="action" data-action="db_attach">
@@ -540,6 +570,70 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
       </div>
     </div>
   </div><!-- /tab-databases -->
+
+  <div id="tab-users" class="tab-panel" hidden>
+    <div class="card" id="users-card">
+      <h2>Users <span class="small">(<?= count($users) ?>)</span></h2>
+      <p class="small">Each user has a Linux account, a dedicated PHP-FPM pool and prefixed resources. Suspending disables the pool and locks that user's DB accounts.</p>
+      <?php if (empty($users)): ?>
+        <p class="small">No managed users yet. Create one below.</p>
+      <?php else: ?>
+        <table>
+          <thead><tr><th>User</th><th>Role</th><th>State</th><th>Resources</th><th>FPM socket</th><th>Actions</th></tr></thead>
+          <tbody>
+            <?php foreach ($users as $u): ?>
+              <?php $uname = (string)($u['user'] ?? ''); ?>
+              <tr>
+                <td><strong><?= e($uname) ?></strong><?= empty($u['os_user']) ? ' <span class="bad">no OS user</span>' : '' ?></td>
+                <td><?= e((string)($u['role'] ?? '')) ?></td>
+                <td class="<?= (($u['state'] ?? '') === 'active') ? 'ok' : 'idle' ?>"><?= e((string)($u['state'] ?? '')) ?></td>
+                <td><?= e((string)($u['owned'] ?? '0')) ?></td>
+                <td class="small"><code><?= e((string)($u['socket'] ?? '')) ?></code></td>
+                <td>
+                  <div class="row-actions">
+                    <?php if (($u['state'] ?? '') === 'active'): ?>
+                      <form data-action="user_suspend">
+                        <input type="hidden" name="user" value="<?= e($uname) ?>">
+                        <button class="button-small button-quiet">Suspend</button>
+                      </form>
+                    <?php else: ?>
+                      <form data-action="user_unsuspend">
+                        <input type="hidden" name="user" value="<?= e($uname) ?>">
+                        <button class="button-small button-quiet">Unsuspend</button>
+                      </form>
+                    <?php endif; ?>
+                    <form data-action="user_delete">
+                      <input type="hidden" name="user" value="<?= e($uname) ?>">
+                      <button class="button-small button-danger">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      <?php endif; ?>
+    </div>
+
+    <div class="card">
+      <h2>User actions</h2>
+      <div class="grid actions-grid">
+        <form class="action" data-action="user_create">
+          <h3>Create user</h3>
+          <p class="small">Creates a Linux user, home directory and a dedicated PHP-FPM pool. Leave password blank to generate one stored in <code>/var/lib/wsa/users/&lt;user&gt;.password</code>.</p>
+          <label>User name <input name="user" required placeholder="alice"></label>
+          <label>Role
+            <select name="role">
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+          </label>
+          <label>Password (optional) <input name="password" type="password" autocomplete="new-password"></label>
+          <button>Create user</button>
+        </form>
+      </div>
+    </div>
+  </div><!-- /tab-users -->
 
   <div class="card">
     <h2>Last action output</h2>
@@ -600,7 +694,7 @@ $panelUrl = 'https://' . $cfg['PANEL_DOMAIN'] . ':' . $cfg['PANEL_PORT'] . $cfg[
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
-        ['domains-card', 'databases-card', 'domain-actions-card', 'log-card'].forEach(function (id) {
+        ['domains-card', 'databases-card', 'domain-actions-card', 'users-card', 'log-card'].forEach(function (id) {
           const fresh = doc.getElementById(id);
           const current = document.getElementById(id);
           if (fresh && current) current.innerHTML = fresh.innerHTML;

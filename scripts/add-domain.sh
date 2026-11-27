@@ -14,11 +14,13 @@ source "${SCRIPT_DIR}/../lib/preflight.sh"
 #   --app wordpress|static (default static)
 #   --db-pass PASSWORD (optional, will generate if not provided)
 #   --db NAME (attach an existing database created by scripts/databases.sh)
+#   --owner USER (provision under a Hestia-style user: prefixed paths/DB/socket)
 #   -h|--help (show usage)
 domain=""
 app=""
 db_pass=""
 db_name_opt=""
+owner=""
 while (( $# )); do
   case "$1" in
     --app)
@@ -33,8 +35,12 @@ while (( $# )); do
       db_name_opt="${2:-}"
       shift 2
       ;;
+    --owner)
+      owner="${2:-}"
+      shift 2
+      ;;
     -h|--help)
-      printf 'usage: bash scripts/add-domain.sh <domain> [--app wordpress|static] [--db-pass PASSWORD] [--db NAME]\n'
+      printf 'usage: bash scripts/add-domain.sh <domain> [--app wordpress|static] [--db-pass PASSWORD] [--db NAME] [--owner USER]\n'
       exit 0
       ;;
     -*)
@@ -90,6 +96,22 @@ log "== add-domain.sh =="
 require_root
 load_env || true
 
+# Hestia-style owner: use the user's FPM socket, docroot base and DB prefix.
+owner_socket=""
+owner_base=""
+db_prefix=""
+if [[ -n "$owner" ]]; then
+  owner_meta="/var/lib/wsa/users/${owner}.meta"
+  [[ -f "$owner_meta" ]] || fail "user $owner is not managed by WSA — run scripts/users.sh create $owner"
+  [[ "$(grep -m1 '^STATE=' "$owner_meta" | cut -d= -f2-)" == "active" ]] || fail "user $owner is suspended"
+  owner_socket="$(grep -m1 '^FPM_SOCKET=' "$owner_meta" | cut -d= -f2-)"
+  db_prefix="$(grep -m1 '^DB_PREFIX=' "$owner_meta" | cut -d= -f2-)"
+  owner_base="/var/www/${owner}"
+  [[ -n "$owner_socket" && -n "$db_prefix" ]] || fail "incomplete metadata for user $owner"
+  [[ -S "$owner_socket" ]] || fail "PHP-FPM socket $owner_socket is missing — was the user's pool started?"
+  info "provisioning as user $owner (socket $owner_socket)"
+fi
+
 # Resolve PHP-FPM socket at runtime (8.3 on Ubuntu packages, 8.6 here, etc.).
 detect_php_socket() {
   local ver sock
@@ -107,7 +129,7 @@ detect_php_socket() {
   return 1
 }
 
-fpm_socket="$(detect_php_socket || true)"
+fpm_socket="${owner_socket:-$(detect_php_socket || true)}"
 if [[ -z "$fpm_socket" ]]; then
   fail "no PHP-FPM socket found in /run/php — was setup.sh run?"
 fi
@@ -142,9 +164,15 @@ for i in "${!domains[@]}"; do
   fi
 
   slug="$(domain_slug "$domain")"
-  db="${slug}_db"
-  dbuser="${slug}_u"
-  db_env_key="DB_PASS_${slug}"
+  if [[ -n "$owner" ]]; then
+    db="${db_prefix}${slug}_db"
+    dbuser="${db_prefix}${slug}_u"
+    db_env_key="DB_PASS_${owner}_${slug}"
+  else
+    db="${slug}_db"
+    dbuser="${slug}_u"
+    db_env_key="DB_PASS_${slug}"
+  fi
   own_db=1
   db_meta=""
   if [[ -n "$db_name_opt" ]]; then
@@ -159,7 +187,12 @@ for i in "${!domains[@]}"; do
     own_db=0
     info "using existing managed database: $db (user $dbuser)"
   fi
-  docroot="/var/www/${domain}/public_html"
+  domain_root="/var/www/${domain}"
+  if [[ -n "$owner" ]]; then
+    domain_root="${owner_base}/${domain}"
+  fi
+  docroot="${domain_root}/public_html"
+  doc_owner="${owner:-www-data}"
   vhost_name="${domain}.conf"
 
   # 1. Resolve the DB password first — the marker file needs it.
@@ -182,8 +215,12 @@ for i in "${!domains[@]}"; do
 
   # 2. Docroot.
   run_root mkdir -p "$docroot"
-  run_root chown -R www-data:www-data "/var/www/${domain}"
-  run_root chmod -R 755 "/var/www/${domain}"
+  if [[ -n "$owner" ]]; then
+    run_root chown -R "${owner}:www-data" "$domain_root"
+  else
+    run_root chown -R "${doc_owner}:www-data" "$domain_root"
+  fi
+  run_root chmod -R 755 "$domain_root"
 
   # 3. App-specific content.
   if [[ "$dom_app" == "wordpress" ]]; then
@@ -197,7 +234,7 @@ for i in "${!domains[@]}"; do
       run_root cp -a "${wp_template}/." "${docroot}/"
       info "WordPress template copied into $docroot"
     fi
-    run_root chown -R www-data:www-data "$docroot"
+    run_root chown -R "${doc_owner}:www-data" "$docroot"
     run_root find "$docroot" -type d -exec chmod 0755 {} +
     run_root find "$docroot" -type f -exec chmod 0644 {} +
 
@@ -238,7 +275,7 @@ for i in "${!domains[@]}"; do
         }
         { print }
       ' "$wc_tmp" > "$wc_final"
-      run_root install -o www-data -g www-data -m 0640 "$wc_final" "$wp_config"
+      run_root install -o "$doc_owner" -g www-data -m 0640 "$wc_final" "$wp_config"
       rm -f "$salts_tmp" "$wc_tmp" "$wc_final"
       info "wp-config.php generated for $domain (prefix ${slug}_wp_)"
     fi
@@ -262,7 +299,7 @@ PHP
        run_root cmp -s "$marker_tmp" "${docroot}/index.php"; then
       info "marker file already up to date — skipping"
     else
-      run_root install -o www-data -g www-data -m 0644 "$marker_tmp" "${docroot}/index.php"
+      run_root install -o "$doc_owner" -g www-data -m 0644 "$marker_tmp" "${docroot}/index.php"
       info "marker file created/updated at ${docroot}/index.php"
     fi
     rm -f "$marker_tmp"
@@ -290,8 +327,8 @@ PHP
     fi
     run_root mariadb -e "GRANT ALL ON \`${db}\`.* TO '${dbuser}'@'localhost'; FLUSH PRIVILEGES;"
     meta_tmp="$(mktemp)"
-    printf 'DB_NAME=%s\nDB_USER=%s\nENV_KEY=%s\nATTACHED_TO=%s\n' \
-      "$db" "$dbuser" "$db_env_key" "$domain" > "$meta_tmp"
+    printf 'DB_NAME=%s\nDB_USER=%s\nENV_KEY=%s\nATTACHED_TO=%s\nOWNER=%s\n' \
+      "$db" "$dbuser" "$db_env_key" "$domain" "${owner:-admin}" > "$meta_tmp"
     run_root install -o root -g root -m 0644 "$meta_tmp" "/var/lib/wsa/databases/${db}.meta"
     rm -f "$meta_tmp"
     info "database $db registered in Database management (attached to $domain)"
@@ -306,6 +343,16 @@ PHP
     rm -f "$meta_tmp"
     info "database $db attached to $domain"
   fi
+
+  # Ownership record for the panel and for status/smoke/remove scripts.
+  run_root install -d -m 0755 /var/lib/wsa/sites
+  site_tmp="$(mktemp)"
+  printf 'DOMAIN=%s\nOWNER=%s\nDOCROOT=%s\nDB_NAME=%s\nDB_USER=%s\nFPM_SOCKET=%s\nLAYOUT=%s\n' \
+    "$domain" "${owner:-admin}" "$docroot" "$db" "$dbuser" "$fpm_socket" \
+    "$([[ -n "$owner" ]] && printf user || printf legacy)" > "$site_tmp"
+  run_root install -o root -g root -m 0644 "$site_tmp" "/var/lib/wsa/sites/${domain}.meta"
+  rm -f "$site_tmp"
+  info "site metadata recorded (owner ${owner:-admin})"
 
   # 4. nginx vhost from template.
   if [[ -f "${SCRIPT_DIR}/../templates/nginx-vhost.conf.tpl" ]]; then

@@ -114,6 +114,7 @@ function panel_scripts(): array
         'remove' => $root . '/scripts/remove-domain.sh',
         'prepare_wp' => $root . '/scripts/prepare-wordpress.sh',
         'databases' => $root . '/scripts/databases.sh',
+        'users' => $root . '/scripts/users.sh',
         'smoke' => $root . '/tests/smoke.sh',
     ];
 }

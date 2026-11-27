@@ -40,6 +40,11 @@ for domain in "${domains[@]}"; do
   printf -- '-- %s --\n' "$domain"
   body="$(mktemp)"
   docroot="/var/www/${domain}/public_html"
+  site_meta="/var/lib/wsa/sites/${domain}.meta"
+  if [[ -f "$site_meta" ]]; then
+    meta_docroot="$(grep -m1 '^DOCROOT=' "$site_meta" | cut -d= -f2-)"
+    [[ -n "$meta_docroot" ]] && docroot="$meta_docroot"
+  fi
   app="static"
   [[ -f "${docroot}/wp-config.php" ]] && app="wordpress"
   printf 'app: %s\n' "$app"

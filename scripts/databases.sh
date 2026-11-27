@@ -49,12 +49,12 @@ meta_set() {
 }
 
 write_meta() {
-  local name="$1" user="$2" env_key="$3" attached="${4:--}"
+  local name="$1" user="$2" env_key="$3" attached="${4:--}" owner="${5:-admin}"
   run_root install -d -m 0755 "$META_DIR"
   local tmp
   tmp="$(mktemp)"
-  printf 'DB_NAME=%s\nDB_USER=%s\nENV_KEY=%s\nATTACHED_TO=%s\n' \
-    "$name" "$user" "$env_key" "$attached" > "$tmp"
+  printf 'DB_NAME=%s\nDB_USER=%s\nENV_KEY=%s\nATTACHED_TO=%s\nOWNER=%s\n' \
+    "$name" "$user" "$env_key" "$attached" "$owner" > "$tmp"
   run_root install -o root -g root -m 0644 "$tmp" "$(meta_path "$name")"
   rm -f "$tmp"
 }
@@ -74,6 +74,7 @@ if [[ "${1:-}" == "--json" ]]; then
       user="$(meta_get "$(basename "$meta" .meta)" DB_USER)"
       env_key="$(meta_get "$(basename "$meta" .meta)" ENV_KEY)"
       attached="$(meta_get "$(basename "$meta" .meta)" ATTACHED_TO)"
+      owner="$(meta_get "$(basename "$meta" .meta)" OWNER)"
       [[ -z "$name" ]] && continue
       db_present=0; user_present=0; pass_present=0
       db_exists "$name" 2>/dev/null && db_present=1
@@ -81,9 +82,10 @@ if [[ "${1:-}" == "--json" ]]; then
       if [[ -n "$env_key" ]] && [[ -n "${!env_key:-}" ]]; then pass_present=1; fi
       (( first )) || printf ','
       first=0
-      printf '{"name":"%s","user":"%s","env_key":"%s","password_present":%d,"attached_to":"%s","db_present":%d,"user_present":%d}' \
+      printf '{"name":"%s","user":"%s","env_key":"%s","password_present":%d,"attached_to":"%s","owner":"%s","db_present":%d,"user_present":%d}' \
         "$(json_escape "$name")" "$(json_escape "$user")" "$(json_escape "$env_key")" \
-        "$pass_present" "$(json_escape "${attached:--}")" "$db_present" "$user_present"
+        "$pass_present" "$(json_escape "${attached:--}")" "$(json_escape "${owner:-admin}")" \
+        "$db_present" "$user_present"
     done
   fi
   printf ']}\n'
@@ -101,18 +103,29 @@ case "$cmd" in
     name="${1:-}"
     valid_db_name "$name" || fail "invalid database name: '${name:-<empty>}' (use letters, digits, underscore; max 60)"
     shift
-    user=""; pass=""
+    user=""; pass=""; owner=""
     while (( $# )); do
       case "$1" in
         --user) user="${2:-}"; shift 2 ;;
         --pass) pass="${2:-}"; shift 2 ;;
+        --owner) owner="${2:-}"; shift 2 ;;
         *) fail "unknown option: $1" ;;
       esac
     done
-    valid_db_name "${user:-${name}_u}" || fail "invalid database user"
-    user="${user:-${name}_u}"
     require_root
     load_env || true
+    if [[ -n "$owner" ]]; then
+      owner_meta="/var/lib/wsa/users/${owner}.meta"
+      [[ -f "$owner_meta" ]] || fail "user $owner is not managed by WSA"
+      [[ "$(grep -m1 '^STATE=' "$owner_meta" | cut -d= -f2-)" == "active" ]] || fail "user $owner is suspended"
+      prefix="$(grep -m1 '^DB_PREFIX=' "$owner_meta" | cut -d= -f2-)"
+      name="${prefix}${name}"
+      valid_db_name "$name" || fail "prefixed database name is invalid: $name"
+    else
+      owner="admin"
+    fi
+    valid_db_name "${user:-${name}_u}" || fail "invalid database user"
+    user="${user:-${name}_u}"
     env_key="DB_PASS_DB_${name}"
     if [[ -z "$pass" ]]; then
       pass="${!env_key:-}"
@@ -143,7 +156,7 @@ case "$cmd" in
     run_root mariadb -e "GRANT ALL ON \`${name}\`.* TO '$(sql_quote "$user")'@'localhost'; FLUSH PRIVILEGES;"
     attached="-"
     [[ -f "$(meta_path "$name")" ]] && attached="$(meta_get "$name" ATTACHED_TO)"
-    write_meta "$name" "$user" "$env_key" "$attached"
+    write_meta "$name" "$user" "$env_key" "$attached" "$owner"
     log "done: database $name (user $user, env $env_key)"
     ;;
 

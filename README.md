@@ -204,6 +204,24 @@ An empty DB created here can be connected to WordPress by selecting it in the
 panel's **Add domain → Database** dropdown, or by using `attach` for a site that
 already exists. `remove-domain.sh --keep-db` detaches without deleting.
 
+### Users (Hestia-style)
+
+Optional isolation layer: each user is a real Linux account with a dedicated
+PHP-FPM pool and prefixed resources.
+
+```bash
+bash scripts/users.sh --json                 # user inventory (panel uses this)
+bash scripts/users.sh create alice --role user --password 'SECRET'
+bash scripts/users.sh suspend alice          # disables the FPM pool, locks DB users
+bash scripts/users.sh unsuspend alice
+bash scripts/users.sh delete alice --yes     # refuses while it owns resources
+```
+
+`add-domain.sh --owner alice` and `databases.sh create shop --owner alice`
+provision `/var/www/alice/<domain>` and `alice_shop` under that user. Existing
+sites stay on the legacy layout and are shown as owner `admin`. The panel has a
+**Users** tab plus owner columns and selectors.
+
 ### Verify and inspect
 
 ```bash
