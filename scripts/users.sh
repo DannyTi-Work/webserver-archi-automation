@@ -87,7 +87,7 @@ account_op() {
     # shadow-utils prints "cannot lock /etc/passwd" both for real contention
     # and when the account files are read-only in a sandbox, so retry on the
     # message itself — a lock file may never be visible to us.
-    if grep -qi 'cannot lock' <<<"$out" || [[ -f /etc/passwd.lock || -f /etc/group.lock ]]; then
+    if grep -qi 'cannot lock' <<<"$out" || [[ -f /etc/.pwd.lock || -f /etc/passwd.lock || -f /etc/group.lock ]]; then
       info "account database unavailable, retrying $label ($attempt/5)"
       sleep 2
     else
