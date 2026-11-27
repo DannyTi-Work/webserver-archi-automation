@@ -72,6 +72,27 @@ fpm_gate_and_reload() {
   reload_service "$PHPM_SERVICE"
 }
 
+# shadow-utils locks /etc/passwd (and /etc/group) while editing accounts. A
+# concurrent useradd/userdel can make it fail with "cannot lock /etc/passwd;
+# try again later". Retry briefly instead of failing the whole panel action.
+account_op() {
+  local label="$1"; shift
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if run_root "$@"; then
+      return 0
+    fi
+    if [[ -f /etc/passwd.lock || -f /etc/group.lock ]]; then
+      info "account database locked, retrying $label ($attempt/5)"
+      sleep 2
+    else
+      return 1
+    fi
+  done
+  warn "account database stayed locked while trying to $label — try again later"
+  return 1
+}
+
 # Count domains / databases owned by a user (from their metadata).
 owned_count() {
   local user="$1" n=0 meta
@@ -152,7 +173,8 @@ case "$cmd" in
     pool="${PHPM_POOL_DIR}/${user}.conf"
 
     info "creating Linux user $user"
-    run_root useradd --home-dir "$home_dir" --create-home --shell /usr/sbin/nologin "$user"
+    account_op "create user $user" useradd --home-dir "$home_dir" --create-home --shell /usr/sbin/nologin "$user" || \
+      fail "could not create Linux user $user — account database may be locked"
 
     if [[ -z "$pass" ]]; then
       pass="$(gen_password)"
@@ -243,7 +265,9 @@ POOL
       [[ -n "$p" && -f "$p" ]] && run_root rm -f "$p"
     done
     fpm_gate_and_reload
-    id -u "$user" >/dev/null 2>&1 && run_root userdel -r "$user" 2>/dev/null || true
+    if id -u "$user" >/dev/null 2>&1; then
+      account_op "delete user $user" userdel -r "$user" || warn "could not remove Linux user $user — remove it manually"
+    fi
     run_root rm -f "$(meta_path "$user")" "${USERS_DIR}/${user}.htpasswd" "${USERS_DIR}/${user}.password"
     log "done: user $user deleted"
     ;;
