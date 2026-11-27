@@ -231,13 +231,18 @@ fpm_dropin="${fpm_dropin_dir}/10-wsa-panel.conf"
 dropin_tmp="$(mktemp)"
 cat > "$dropin_tmp" <<'EOF'
 [Service]
+# Panel actions call root-only scripts (certbot, nginx, shadow-utils) from
+# inside PHP-FPM. ProtectSystem=full makes /etc read-only in this namespace;
+# sudo cannot escape it, so useradd fails with "cannot lock /etc/passwd" even
+# with individual files whitelisted. Disabling it lets those actions work.
+ProtectSystem=no
 # Required for panel actions that call sudo-guarded scripts: certbot needs
 # /etc/letsencrypt writable, nginx vhosts live under /etc/nginx, and user
 # management writes PHP-FPM pool configs under /etc/php.
-# /etc itself must be writable too: shadow-tools (useradd/userdel) create
-# /etc/passwd.lock and friends. With ProtectSystem=full those bind mounts are
-# read-only, which makes useradd fail with "cannot lock /etc/passwd".
-ReadWritePaths=/etc /etc/letsencrypt /etc/nginx /etc/php
+# Do NOT add individual account files here: shadow-tools rewrite /etc/passwd
+# by rename(), which fails on a file bind mount. ProtectSystem=no above keeps
+# the whole /etc hierarchy genuinely writable instead.
+ReadWritePaths=/etc/letsencrypt /etc/nginx /etc/php
 EOF
 if run_root test -f "$fpm_dropin" && run_root cmp -s "$dropin_tmp" "$fpm_dropin"; then
   info "php-fpm sandbox drop-in already up to date"

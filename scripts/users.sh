@@ -70,7 +70,13 @@ php_pool_details() {
 
 fpm_gate_and_reload() {
   config_test "php-fpm (user pool)" "$PHPM_FPM_BIN" -t
-  reload_service "$PHPM_SERVICE"
+  # Panel requests are served BY this same php-fpm service. A synchronous
+  # reload kills the worker handling the request, so the action completes but
+  # the HTTP reply dies with 502. Detach the reload into its own session with
+  # a short delay so the response is delivered first.
+  setsid bash -c "sleep 2; /usr/bin/systemctl reload '${PHPM_SERVICE}'" \
+    >/dev/null 2>&1 &
+  info "scheduled PHP-FPM reload ($PHPM_SERVICE)"
 }
 
 # shadow-utils locks /etc/passwd (and /etc/group) while editing accounts. A
@@ -95,6 +101,7 @@ account_op() {
       return 1
     fi
   done
+  [[ -n "$out" ]] && printf '%s\n' "$out" >&2
   warn "account database stayed unavailable while trying to $label — try again later"
   return 1
 }
